@@ -1,17 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
+
+import 'package:cryptography/cryptography.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'hardware_fingerprint_service.dart';
-
+import 'license_public_key.dart';
 
 enum LicenseStatus {
   valid,
   missingLicenseFile,
   fingerprintMismatch,
   corruptLicenseFile,
+  fingerprintUnavailable,
 }
 
 class LicenseCheckResult {
@@ -26,95 +28,79 @@ class LicenseCheckResult {
   bool get isValid => status == LicenseStatus.valid;
 }
 
+/// ترخيص مقفول على جهاز واحد. الملف موقَّع بمفتاح خاص (Ed25519) لا يوجد في
+/// التطبيق، والتطبيق يحمل المفتاح العام فقط: فحتى لو فُكّ التطبيق بالكامل لا
+/// يمكن توليد ترخيص صالح لجهاز آخر.
 class LicenseService {
- 
-  static const List<String> _secretParts = [
-    'BHM-2026', // Billiard Hall Manager
-    '-x9K',
-    'q2',
-    'Lz7',
-    '-SECRET',
-  ];
-
-  static String get _secretKey => _secretParts.join();
+  LicenseService._();
 
   static const String _licenseFileName = 'license.lic';
 
+  /// الرسالة التي يوقّعها المطوّر: يجب أن تطابق tool/license_tool.dart.
+  static String signedMessage(String fingerprint) => 'GL1:$fingerprint';
 
   static Future<LicenseCheckResult> validate() async {
-    final currentFingerprint =
-        await HardwareFingerprintService.computeFingerprint();
+    final String fingerprint;
+    try {
+      fingerprint = await HardwareFingerprintService.computeFingerprint();
+    } catch (_) {
+      return const LicenseCheckResult(
+        status: LicenseStatus.fingerprintUnavailable,
+        currentDeviceFingerprint: '—',
+      );
+    }
+
+    LicenseCheckResult result(LicenseStatus s) => LicenseCheckResult(
+          status: s,
+          currentDeviceFingerprint: fingerprint,
+        );
 
     final file = await _licenseFile();
-    if (!await file.exists()) {
-      return LicenseCheckResult(
-        status: LicenseStatus.missingLicenseFile,
-        currentDeviceFingerprint: currentFingerprint,
-      );
-    }
+    if (!await file.exists()) return result(LicenseStatus.missingLicenseFile);
 
-    Map<String, dynamic> licenseData;
+    String storedFingerprint;
+    List<int> signatureBytes;
     try {
-      final content = await file.readAsString();
-      licenseData = jsonDecode(content) as Map<String, dynamic>;
-    } catch (e) {
-      return LicenseCheckResult(
-        status: LicenseStatus.corruptLicenseFile,
-        currentDeviceFingerprint: currentFingerprint,
-      );
+      final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      storedFingerprint = (data['fingerprint'] as String).trim();
+      signatureBytes = base64.decode(data['signature'] as String);
+    } catch (_) {
+      return result(LicenseStatus.corruptLicenseFile);
     }
 
-    final storedFingerprint = licenseData['fingerprint'] as String?;
-    final storedSignature = licenseData['signature'] as String?;
-
-    if (storedFingerprint == null || storedSignature == null) {
-      return LicenseCheckResult(
-        status: LicenseStatus.corruptLicenseFile,
-        currentDeviceFingerprint: currentFingerprint,
+    final bool authentic;
+    try {
+      final publicKey = SimplePublicKey(
+        base64.decode(LicensePublicKey.base64Value),
+        type: KeyPairType.ed25519,
       );
+      authentic = await Ed25519().verify(
+        utf8.encode(signedMessage(storedFingerprint)),
+        signature: Signature(signatureBytes, publicKey: publicKey),
+      );
+    } catch (_) {
+      return result(LicenseStatus.corruptLicenseFile);
     }
 
-    final expectedSignature = _sign(storedFingerprint);
-    final signatureIsAuthentic = expectedSignature == storedSignature;
-    final fingerprintMatchesThisDevice =
-        storedFingerprint == currentFingerprint;
-
-    if (!signatureIsAuthentic) {
-   
-      return LicenseCheckResult(
-        status: LicenseStatus.corruptLicenseFile,
-        currentDeviceFingerprint: currentFingerprint,
-      );
+    if (!authentic) return result(LicenseStatus.corruptLicenseFile);
+    if (storedFingerprint != fingerprint) {
+      return result(LicenseStatus.fingerprintMismatch);
     }
-
-    if (!fingerprintMatchesThisDevice) {
-   
-      return LicenseCheckResult(
-        status: LicenseStatus.fingerprintMismatch,
-        currentDeviceFingerprint: currentFingerprint,
-      );
-    }
-
-    return LicenseCheckResult(
-      status: LicenseStatus.valid,
-      currentDeviceFingerprint: currentFingerprint,
-    );
+    return result(LicenseStatus.valid);
   }
 
-  static String _sign(String fingerprint) {
-    final hmac = Hmac(sha256, utf8.encode(_secretKey));
-    return hmac.convert(utf8.encode(fingerprint)).toString();
+  /// ينسخ ملف ترخيص اختاره المستخدم إلى مكانه الصحيح ثم يتحقق منه.
+  static Future<LicenseCheckResult> installFrom(String sourcePath) async {
+    final target = await _licenseFile();
+    await Directory(p.dirname(target.path)).create(recursive: true);
+    await File(sourcePath).copy(target.path);
+    return validate();
   }
-
 
   static Future<File> _licenseFile() async {
     final dir = await getApplicationSupportDirectory();
     return File(p.join(dir.path, _licenseFileName));
   }
 
-
-  static Future<String> licenseFilePath() async {
-    final file = await _licenseFile();
-    return file.path;
-  }
+  static Future<String> licenseFilePath() async => (await _licenseFile()).path;
 }

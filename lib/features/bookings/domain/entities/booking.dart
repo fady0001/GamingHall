@@ -1,59 +1,69 @@
 import '../../../../core/utils/time_format.dart';
-import '../../../sessions/domain/entities/active_session.dart';
 
-/// scheduled: حجز قادم · converted: تحوّل إلى سلة · cancelled: ملغى.
+/// scheduled: قادم · converted: تحوّل إلى فاتورة · cancelled: ملغى.
 enum BookingStatus { scheduled, converted, cancelled }
 
-extension BookingStatusLabel on BookingStatus {
-  String get arabicLabel {
+extension BookingStatusX on BookingStatus {
+  String get label {
     switch (this) {
       case BookingStatus.scheduled:
         return 'قادم';
       case BookingStatus.converted:
-        return 'تحوّل إلى سلة';
+        return 'تحوّل إلى فاتورة';
       case BookingStatus.cancelled:
         return 'ملغى';
     }
   }
 }
 
-/// حجز جهاز/طاولة فقط (بدون مأكولات). اسم الجهاز يُحفظ كلقطة حتى تبقى
-/// الحجوزات القديمة مقروءة لو أُعيدت تسمية الجهاز لاحقًا.
+BookingStatus bookingStatusFromName(String name) {
+  for (final s in BookingStatus.values) {
+    if (s.name == name) return s;
+  }
+  return BookingStatus.scheduled;
+}
+
+/// حجز مسبق لجهاز/طاولة بوقت محدد. اسم الجهاز يُحفظ كلقطة.
 class Booking {
   final int id;
   final String customerName;
   final String phone;
-  final SessionResourceType resourceType;
   final int resourceId;
   final String resourceName;
+  final int playerCount;
   final DateTime startAt;
   final DateTime endAt;
   final BookingStatus status;
-  final int? convertedCartId;
+  final int? convertedInvoiceId;
   final DateTime? reminderShownAt;
   final DateTime createdAt;
+
+  /// حجز بوقت مفتوح: لا مدة محددة ولا يمنع حجز الجهاز بوقت آخر (الموظف يقرر).
+  /// [endAt] هنا للعرض فقط (ساعة من البداية) ولا تُعرض كوقت نهاية.
+  final bool isOpen;
 
   const Booking({
     required this.id,
     required this.customerName,
     required this.phone,
-    required this.resourceType,
     required this.resourceId,
     required this.resourceName,
+    required this.playerCount,
     required this.startAt,
     required this.endAt,
     required this.status,
     required this.createdAt,
-    this.convertedCartId,
+    this.convertedInvoiceId,
     this.reminderShownAt,
+    this.isOpen = false,
   });
 
   Duration get duration => endAt.difference(startAt);
 
-  String get timeRangeLabel => '${formatClock(startAt)} - ${formatClock(endAt)}';
+  String get timeRangeLabel =>
+      isOpen ? '${formatClock(startAt)} (وقت مفتوح)' : '${formatClock(startAt)} - ${formatClock(endAt)}';
 }
 
-/// حجز غير صالح (حقول ناقصة، نهاية قبل البداية، وقت مضى).
 class BookingValidationException implements Exception {
   final String message;
   const BookingValidationException(this.message);
@@ -61,7 +71,6 @@ class BookingValidationException implements Exception {
   String toString() => message;
 }
 
-/// تعارض مع حجز موجود على نفس الجهاز.
 class BookingConflictException implements Exception {
   final Booking conflicting;
   const BookingConflictException(this.conflicting);
@@ -69,7 +78,7 @@ class BookingConflictException implements Exception {
   String get message =>
       'يوجد حجز متعارض على "${conflicting.resourceName}": '
       '${conflicting.customerName} من ${formatClock(conflicting.startAt)} '
-      'إلى ${formatClock(conflicting.endAt)} (${formatDate(conflicting.startAt)})';
+      '${conflicting.isOpen ? '(وقت مفتوح)' : 'إلى ${formatClock(conflicting.endAt)}'} (${formatDate(conflicting.startAt)})';
 
   @override
   String toString() => message;

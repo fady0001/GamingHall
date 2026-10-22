@@ -1,94 +1,104 @@
 import 'package:flutter/material.dart';
 
+import 'app_colors.dart';
 
 class AppFonts {
   AppFonts._();
-  static const String cairo = 'Cairo'; // للعناوين
-  static const String tajawal = 'Tajawal'; // للنصوص العادية (أوضح في الفقرات)
+  static const String cairo = 'Cairo'; // العناوين والأرقام الكبيرة
+  static const String tajawal = 'Tajawal'; // النصوص
 }
-
 
 class AppTextStyles {
   AppTextStyles._();
 
+  static const _tabular = [FontFeature.tabularFigures()];
 
-  static TextStyle heading1(Color color) => TextStyle(
+  static TextStyle display([Color? color]) => TextStyle(
         fontFamily: AppFonts.cairo,
-        fontSize: 28,
+        fontSize: 34,
         fontWeight: FontWeight.w700,
-        color: color,
+        color: color ?? AppColors.textPrimary,
+        height: 1.2,
+        fontFeatures: _tabular,
+      );
+
+  static TextStyle heading1([Color? color]) => TextStyle(
+        fontFamily: AppFonts.cairo,
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        color: color ?? AppColors.textPrimary,
         height: 1.3,
       );
 
-  static TextStyle heading2(Color color) => TextStyle(
-        fontFamily: AppFonts.cairo,
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-        color: color,
-        height: 1.3,
-      );
-
-  static TextStyle heading3(Color color) => TextStyle(
-        fontFamily: AppFonts.cairo,
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        color: color,
-        height: 1.3,
-      );
-
-  // نص عادي للفقرات والبيانات
-  static TextStyle bodyLarge(Color color) => TextStyle(
-        fontFamily: AppFonts.tajawal,
-        fontSize: 16,
-        fontWeight: FontWeight.w400,
-        color: color,
-        height: 1.5,
-      );
-
-  static TextStyle bodyMedium(Color color) => TextStyle(
-        fontFamily: AppFonts.tajawal,
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
-        color: color,
-        height: 1.5,
-      );
-
-  static TextStyle bodySmall(Color color) => TextStyle(
-        fontFamily: AppFonts.tajawal,
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        color: color,
-        height: 1.4,
-      );
-
-  // نص الأزرار
-  static TextStyle button(Color color) => TextStyle(
-        fontFamily: AppFonts.cairo,
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: color,
-      );
-
-
-  static TextStyle counterDisplay(Color color) => TextStyle(
-        fontFamily: AppFonts.cairo,
-        fontSize: 36,
-        fontWeight: FontWeight.w700,
-        color: color,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      );
-
-  static TextStyle priceDisplay(Color color) => TextStyle(
+  static TextStyle heading2([Color? color]) => TextStyle(
         fontFamily: AppFonts.cairo,
         fontSize: 20,
         fontWeight: FontWeight.w700,
-        color: color,
-        fontFeatures: const [FontFeature.tabularFigures()],
+        color: color ?? AppColors.textPrimary,
+        height: 1.3,
       );
 
-  // اختصارات جاهزة للاستخدام المباشر مع سياق الثيم الحالي
-  static TextStyle heading1Of(BuildContext context) =>
-      heading1(Theme.of(context).colorScheme.onSurface);
-  static TextStyle bodyMediumOf(BuildContext context) =>
-      bodyMedium(Theme.of(context).colorScheme.onSurface);
+  static TextStyle heading3([Color? color]) => TextStyle(
+        fontFamily: AppFonts.cairo,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: color ?? AppColors.textPrimary,
+        height: 1.3,
+      );
+
+  static TextStyle bodyLarge([Color? color]) => TextStyle(
+        fontFamily: AppFonts.tajawal,
+        fontSize: 16,
+        color: color ?? AppColors.textPrimary,
+        height: 1.5,
+      );
+
+  static TextStyle bodyMedium([Color? color]) => TextStyle(
+        fontFamily: AppFonts.tajawal,
+        fontSize: 14,
+        color: color ?? AppColors.textPrimary,
+        height: 1.5,
+      );
+
+  static TextStyle bodySmall([Color? color]) => TextStyle(
+        fontFamily: AppFonts.tajawal,
+        fontSize: 12,
+        color: color ?? AppColors.textSecondary,
+        height: 1.4,
+      );
+
+  static TextStyle label([Color? color]) => TextStyle(
+        fontFamily: AppFonts.tajawal,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: color ?? AppColors.textSecondary,
+        height: 1.3,
+      );
+
+  static TextStyle button([Color color = Colors.white]) => TextStyle(
+        fontFamily: AppFonts.cairo,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: color,
+      );
+
+  /// أرقام العدّاد والمبالغ (أرقام متساوية العرض حتى لا "تهتز" أثناء العدّ).
+  static TextStyle timer([Color? color, double size = 28]) =>
+      TextStyle(
+        fontFamily: AppFonts.cairo,
+        fontSize: size,
+        fontWeight: FontWeight.w700,
+        color: color ?? AppColors.textPrimary,
+        height: 1.1,
+        fontFeatures: _tabular,
+      );
+
+  static TextStyle price([Color? color, double size = 18]) =>
+      TextStyle(
+        fontFamily: AppFonts.cairo,
+        fontSize: size,
+        fontWeight: FontWeight.w700,
+        color: color ?? AppColors.textPrimary,
+        fontFeatures: _tabular,
+      );
 }

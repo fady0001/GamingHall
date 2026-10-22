@@ -1,226 +1,168 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/domain/value_objects/money.dart';
-import '../../../../core/theme/color_palette.dart';
+import '../../../../core/domain/value_objects/money_parser.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/dimensions.dart';
 import '../../../../core/theme/text_styles.dart';
+import '../../../../core/utils/number_format.dart';
+import '../../../../core/widgets/app_dialog.dart';
+import '../../../../core/widgets/friendly_error.dart';
+import '../../../../core/widgets/money_field.dart';
 import '../../domain/entities/menu_category.dart';
 import '../../domain/entities/menu_item_entity.dart';
 import '../cubit/menu_cubit.dart';
 
-/// نافذة إضافة صنف جديد أو تعديل صنف موجود بالمنيو.
-/// [existingItem] فارغ يعني "إضافة صنف جديد"، وممرَّر يعني "تعديل".
-class MenuItemFormDialog extends StatefulWidget {
-  final MenuItemEntity? existingItem;
-
-  const MenuItemFormDialog({super.key, this.existingItem});
-
-  static Future<void> show(BuildContext context, {MenuItemEntity? item}) {
-    return showDialog(
-      context: context,
-      builder: (dialogContext) => BlocProvider.value(
-        value: context.read<MenuCubit>(),
-        child: MenuItemFormDialog(existingItem: item),
-      ),
-    );
-  }
-
-  @override
-  State<MenuItemFormDialog> createState() => _MenuItemFormDialogState();
+Future<bool> showMenuItemFormDialog(
+  BuildContext context, {
+  MenuItemEntity? existing,
+  MenuCategory? initialCategory,
+}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (_) => _MenuItemFormDialog(existing: existing, initialCategory: initialCategory),
+  );
+  return ok ?? false;
 }
 
-class _MenuItemFormDialogState extends State<MenuItemFormDialog> {
-  late final TextEditingController _nameController;
-  late final TextEditingController _priceController;
-  late final TextEditingController _stockController;
-  late MenuCategory _selectedCategory;
-  String? _errorMessage;
-  bool _isSaving = false;
+class _MenuItemFormDialog extends StatefulWidget {
+  final MenuItemEntity? existing;
+  final MenuCategory? initialCategory;
+  const _MenuItemFormDialog({this.existing, this.initialCategory});
 
-  bool get _isEditing => widget.existingItem != null;
+  @override
+  State<_MenuItemFormDialog> createState() => _MenuItemFormDialogState();
+}
+
+class _MenuItemFormDialogState extends State<_MenuItemFormDialog> {
+  final _name = TextEditingController();
+  final _price = TextEditingController();
+  late MenuCategory _category;
+  String? _nameError;
+  String? _priceError;
+  String? _error;
+  bool _busy = false;
+
+  bool get _isEdit => widget.existing != null;
 
   @override
   void initState() {
     super.initState();
-    final item = widget.existingItem;
-    _nameController = TextEditingController(text: item?.name ?? '');
-    _priceController =
-        TextEditingController(text: item?.price.toDisplayString() ?? '');
-    _stockController =
-        TextEditingController(text: (item?.stockQuantity ?? 0).toString());
-    _selectedCategory = item?.category ?? MenuCategory.food;
+    final e = widget.existing;
+    _category = e?.category ?? widget.initialCategory ?? MenuCategory.coldDrinks;
+    if (e != null) {
+      _name.text = e.name;
+      _price.text = formatMoney(e.price);
+    }
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _priceController.dispose();
-    _stockController.dispose();
+    _name.dispose();
+    _price.dispose();
     super.dispose();
   }
 
-  /// يحوّل نص السعر (مثال: "150.50") إلى Money بأعداد صحيحة فقط، دون أي
-  /// عملية على double في أي خطوة (نفس مبدأ core/domain/value_objects/money).
-  Money? _parsePrice(String input) {
-    final trimmed = input.trim();
-    if (trimmed.isEmpty) return null;
-    final parts = trimmed.split('.');
-    final major = int.tryParse(parts[0].isEmpty ? '0' : parts[0]);
-    if (major == null || major < 0) return null;
-
-    var minor = 0;
-    if (parts.length > 1) {
-      var minorStr = parts[1];
-      if (minorStr.length > 2) minorStr = minorStr.substring(0, 2);
-      minorStr = minorStr.padRight(2, '0');
-      final parsedMinor = int.tryParse(minorStr);
-      if (parsedMinor == null || parsedMinor < 0) return null;
-      minor = parsedMinor;
-    }
-    return Money.fromMajorAndMinor(major, minor);
-  }
-
   Future<void> _submit() async {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      setState(() => _errorMessage = 'الرجاء إدخال اسم الصنف');
-      return;
-    }
-
-    final price = _parsePrice(_priceController.text);
-    if (price == null) {
-      setState(() => _errorMessage = 'سعر غير صالح');
-      return;
-    }
-
-    final stock = int.tryParse(_stockController.text.trim());
-    if (stock == null || stock < 0) {
-      setState(() => _errorMessage = 'كمية المخزون يجب أن تكون رقمًا صحيحًا');
-      return;
-    }
-
+    final price = parseMoney(_price.text);
     setState(() {
-      _isSaving = true;
-      _errorMessage = null;
+      _error = null;
+      _nameError = _name.text.trim().isEmpty ? 'اكتب اسم الصنف' : null;
+      _priceError = (price == null || price.amount <= 0) ? 'أدخل السعر' : null;
     });
+    if (_nameError != null || _priceError != null) return;
 
+    setState(() => _busy = true);
+    final cubit = context.read<MenuCubit>();
     try {
-      final cubit = context.read<MenuCubit>();
-      if (_isEditing) {
-        await cubit.updateItem(widget.existingItem!.copyWith(
-          name: name,
-          category: _selectedCategory,
+      if (_isEdit) {
+        await cubit.update(widget.existing!.copyWith(
+          name: _name.text.trim(),
+          category: _category,
           price: price,
-          stockQuantity: stock,
         ));
       } else {
-        await cubit.addItem(MenuItemEntity(
+        await cubit.add(MenuItemEntity(
           id: 0,
-          name: name,
-          category: _selectedCategory,
-          price: price,
-          stockQuantity: stock,
+          name: _name.text.trim(),
+          category: _category,
+          price: price!,
         ));
       }
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
-      setState(() {
-        _isSaving = false;
-        _errorMessage = 'تعذّر الحفظ: ${e.toString()}';
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = friendlyError(e);
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor =
-        isDark ? ColorPalette.darkTextPrimary : ColorPalette.lightTextPrimary;
-
-    return AlertDialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Dimensions.radiusL),
-      ),
-      title: Text(
-        _isEditing ? 'تعديل صنف' : 'إضافة صنف جديد',
-        style: AppTextStyles.heading3(textColor),
-      ),
-      content: SizedBox(
-        width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _nameController,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'اسم الصنف'),
-            ),
-            const SizedBox(height: Dimensions.spaceM),
-            DropdownButtonFormField<MenuCategory>(
-              initialValue: _selectedCategory,
-              decoration: const InputDecoration(labelText: 'التصنيف'),
-              items: MenuCategory.values
-                  .map((category) => DropdownMenuItem(
-                        value: category,
-                        child: Text(category.arabicLabel),
-                      ))
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _selectedCategory = value);
-                }
-              },
-            ),
-            const SizedBox(height: Dimensions.spaceM),
-            TextField(
-              controller: _priceController,
-              textDirection: TextDirection.ltr,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'السعر',
-                prefixIcon: Icon(Icons.payments_outlined),
-              ),
-            ),
-            const SizedBox(height: Dimensions.spaceM),
-            TextField(
-              controller: _stockController,
-              textDirection: TextDirection.ltr,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'الكمية المتوفرة بالمخزون',
-                prefixIcon: Icon(Icons.inventory_2_outlined),
-              ),
-            ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: Dimensions.spaceS),
-              Text(
-                _errorMessage!,
-                style: AppTextStyles.bodySmall(ColorPalette.danger),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
-      ),
+    return AppDialog(
+      title: _isEdit ? 'تعديل الصنف' : 'إضافة صنف للمنيو',
+      icon: _category.icon,
+      iconColor: AppColors.accent,
+      width: 480,
       actions: [
         TextButton(
-          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
           child: const Text('إلغاء'),
         ),
-        ElevatedButton(
-          onPressed: _isSaving ? null : _submit,
-          style: ElevatedButton.styleFrom(backgroundColor: ColorPalette.primary),
-          child: _isSaving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : Text('حفظ', style: AppTextStyles.button(Colors.white)),
+        FilledButton.icon(
+          onPressed: _busy ? null : _submit,
+          icon: const Icon(Icons.check_rounded),
+          label: Text(_isEdit ? 'حفظ' : 'إضافة'),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _name,
+            autofocus: true,
+            enabled: !_busy,
+            maxLength: 40,
+            decoration: InputDecoration(
+              labelText: 'اسم الصنف',
+              prefixIcon: const Icon(Icons.label_rounded),
+              errorText: _nameError,
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: Dimensions.spaceM),
+          Text('التصنيف', style: AppTextStyles.label()),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in MenuCategory.values)
+                ChoiceChip(
+                  avatar: Icon(c.icon, size: 18),
+                  label: Text(c.label),
+                  selected: _category == c,
+                  onSelected: _busy ? null : (_) => setState(() => _category = c),
+                ),
+            ],
+          ),
+          const SizedBox(height: Dimensions.spaceM),
+          MoneyField(
+            controller: _price,
+            label: 'السعر',
+            errorText: _priceError,
+            enabled: !_busy,
+            onSubmitted: (_) => _submit(),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: Dimensions.spaceM),
+            Text(_error!, style: AppTextStyles.bodyMedium(AppColors.danger)),
+          ],
+        ],
+      ),
     );
   }
 }

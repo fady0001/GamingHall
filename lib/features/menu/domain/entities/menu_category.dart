@@ -1,10 +1,10 @@
-/// تصنيف صنف المنيو. القائمة قابلة للتوسيع بسهولة لاحقًا (يكفي إضافة قيمة
-/// جديدة هنا + سطر بالـ label أدناه)، دون التأثير على أي كود آخر.
+import 'package:flutter/material.dart';
+
+/// تصنيف صنف المنيو (يُخزَّن بالاسم).
 enum MenuCategory { food, coldDrinks, hotDrinks, hookah, other }
 
-extension MenuCategoryLabel on MenuCategory {
-  /// الاسم المعروض بالعربي في كل شاشات المنيو والفواتير.
-  String get arabicLabel {
+extension MenuCategoryX on MenuCategory {
+  String get label {
     switch (this) {
       case MenuCategory.food:
         return 'مأكولات';
@@ -18,4 +18,26 @@ extension MenuCategoryLabel on MenuCategory {
         return 'أخرى';
     }
   }
+
+  IconData get icon {
+    switch (this) {
+      case MenuCategory.food:
+        return Icons.fastfood_rounded;
+      case MenuCategory.coldDrinks:
+        return Icons.local_drink_rounded;
+      case MenuCategory.hotDrinks:
+        return Icons.coffee_rounded;
+      case MenuCategory.hookah:
+        return Icons.smoking_rooms_rounded;
+      case MenuCategory.other:
+        return Icons.category_rounded;
+    }
+  }
+}
+
+MenuCategory menuCategoryFromName(String name) {
+  for (final c in MenuCategory.values) {
+    if (c.name == name) return c;
+  }
+  return MenuCategory.other;
 }

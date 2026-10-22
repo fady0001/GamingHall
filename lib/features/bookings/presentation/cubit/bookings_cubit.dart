@@ -2,14 +2,12 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../sessions/domain/entities/active_session.dart';
 import '../../domain/entities/booking.dart';
 import '../../domain/repositories/booking_repository.dart';
 
 class BookingsState {
   final List<Booking> bookings;
   final bool isLoading;
-
   const BookingsState({this.bookings = const [], this.isLoading = true});
 }
 
@@ -26,26 +24,25 @@ class BookingsCubit extends Cubit<BookingsState> {
   Future<Booking> create({
     required String customerName,
     required String phone,
-    required SessionResourceType resourceType,
     required int resourceId,
-    required String resourceName,
+    required int playerCount,
     required DateTime startAt,
     required DateTime endAt,
+    bool isOpen = false,
   }) =>
       _repository.create(
         customerName: customerName,
         phone: phone,
-        resourceType: resourceType,
         resourceId: resourceId,
-        resourceName: resourceName,
+        playerCount: playerCount,
         startAt: startAt,
         endAt: endAt,
+        isOpen: isOpen,
       );
 
   Future<void> cancel(int id) => _repository.cancel(id);
 
-  Future<void> markConverted(int id, int cartId) =>
-      _repository.markConverted(id, cartId);
+  Future<int> convertToInvoice(int id) => _repository.convertToInvoice(id);
 
   Future<void> markReminderShown(int id) => _repository.markReminderShown(id);
 

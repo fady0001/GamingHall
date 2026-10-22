@@ -1,48 +1,33 @@
-/// يوم عمل واحد في الصالة. اليوم "مفتوح" طالما [endedAt] فارغ، وعند الضغط
-/// على "إنشاء يوم جديد" يُغلق (يُؤرشف) ويُفتح يوم جديد. لا يُحذف أي شيء.
+import '../../../../core/utils/time_format.dart';
+
+/// "يوم عمل" واحد في الصالة. يبقى مفتوحًا حتى يضغط الموظف "يوم عمل جديد"،
+/// فيُؤرشف ويُفتح يوم جديد. لا يُحذف أي شيء أبدًا.
 class WorkDay {
   final int id;
   final DateTime startedAt;
   final DateTime? endedAt;
 
-  const WorkDay({
-    required this.id,
-    required this.startedAt,
-    this.endedAt,
-  });
+  const WorkDay({required this.id, required this.startedAt, this.endedAt});
 
   bool get isOpen => endedAt == null;
 
-  static const Map<int, String> _arabicDayNames = {
-    DateTime.monday: 'الاثنين',
-    DateTime.tuesday: 'الثلاثاء',
-    DateTime.wednesday: 'الأربعاء',
-    DateTime.thursday: 'الخميس',
-    DateTime.friday: 'الجمعة',
-    DateTime.saturday: 'السبت',
-    DateTime.sunday: 'الأحد',
-  };
+  String get dateKey => formatDate(startedAt);
 
-  String get dateKey {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${startedAt.year}-${two(startedAt.month)}-${two(startedAt.day)}';
-  }
-
-  String get dayName => _arabicDayNames[startedAt.weekday]!;
+  String get dayName => arabicDayName(startedAt);
 
   /// مثال: `2026-10-01 - الخميس`
   String get label => '$dateKey - $dayName';
 }
 
-/// نتيجة عملية إنشاء يوم جديد.
-class DayRollover {
-  final WorkDay archivedDay;
-  final WorkDay newDay;
-  final int settledCarts;
+/// يوم عمل مع إحصاءاته (لقائمة السجل).
+class WorkDaySummary {
+  final WorkDay day;
+  final int invoiceCount;
+  final int totalRevenue;
 
-  const DayRollover({
-    required this.archivedDay,
-    required this.newDay,
-    required this.settledCarts,
+  const WorkDaySummary({
+    required this.day,
+    required this.invoiceCount,
+    required this.totalRevenue,
   });
 }

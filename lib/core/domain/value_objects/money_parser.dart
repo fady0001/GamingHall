@@ -1,22 +1,12 @@
 import 'money.dart';
+import '../../utils/number_format.dart';
 
-
+/// يحوّل نصًا يكتبه المستخدم إلى مبلغ. يقبل الأرقام العربية والفواصل
+/// (`5,000` أو `٥٠٠٠`). يعيد null إن كان النص فارغًا أو غير صالح.
 Money? parseMoney(String input) {
-  final trimmed = input.trim();
-  if (trimmed.isEmpty) return null;
-  final parts = trimmed.split('.');
-  if (parts.length > 2) return null;
-  final major = int.tryParse(parts[0].isEmpty ? '0' : parts[0]);
-  if (major == null || major < 0) return null;
-
-  var minor = 0;
-  if (parts.length == 2) {
-    var minorStr = parts[1];
-    if (minorStr.length > 2) minorStr = minorStr.substring(0, 2);
-    minorStr = minorStr.padRight(2, '0');
-    final parsed = int.tryParse(minorStr);
-    if (parsed == null || parsed < 0) return null;
-    minor = parsed;
-  }
-  return Money.fromMajorAndMinor(major, minor);
+  final digits = toLatinDigits(input).replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.isEmpty || digits.length > 12) return null;
+  final value = int.tryParse(digits);
+  if (value == null) return null;
+  return Money(value);
 }

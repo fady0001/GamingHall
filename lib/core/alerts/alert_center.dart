@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// تنبيه ظاهر فوق أي صفحة (انتهاء وقت جلسة، تذكير حجز…).
+import '../theme/app_colors.dart';
+import '../theme/text_styles.dart';
+
+/// تنبيه ظاهر فوق أي صفحة (تذكير لعب جارٍ، موعد حجز...).
 class AppAlert {
   final String id;
   final String title;
@@ -9,6 +12,10 @@ class AppAlert {
   final Color color;
   final String? actionLabel;
   final Future<void> Function()? onAction;
+
+  /// زر ثانوي اختياري (مثل "فتح الفاتورة" بجانب "تمديد").
+  final String? secondaryLabel;
+  final Future<void> Function()? onSecondary;
   final VoidCallback? onDismiss;
 
   const AppAlert({
@@ -19,12 +26,13 @@ class AppAlert {
     required this.color,
     this.actionLabel,
     this.onAction,
+    this.secondaryLabel,
+    this.onSecondary,
     this.onDismiss,
   });
 }
 
-/// مركز تنبيهات واحد لكل التطبيق، يسمح بعدّة تنبيهات معًا بلا تعارض.
-/// عرض تنبيه بنفس [AppAlert.id] يستبدل القديم.
+/// مركز تنبيهات واحد لكل التطبيق. عرض تنبيه بنفس [AppAlert.id] يستبدل القديم.
 class AlertCenter extends ChangeNotifier {
   AlertCenter._();
   static final AlertCenter instance = AlertCenter._();
@@ -46,7 +54,8 @@ class AlertCenter extends ChangeNotifier {
   }
 }
 
-/// يغلّف التطبيق ويرسم التنبيهات أعلى الشاشة. يجب أن يكون داخل Directionality.
+/// يغلّف التطبيق ويرسم التنبيهات أعلى الشاشة. يجب أن يكون داخل Directionality
+/// وThemeو (بدون Tooltip لأنه خارج الـ Navigator).
 class AlertOverlay extends StatelessWidget {
   final Widget child;
   const AlertOverlay({super.key, required this.child});
@@ -57,13 +66,13 @@ class AlertOverlay extends StatelessWidget {
       children: [
         child,
         Positioned(
-          top: 8,
+          top: 12,
           left: 16,
           right: 16,
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
+              constraints: const BoxConstraints(maxWidth: 580),
               child: ListenableBuilder(
                 listenable: AlertCenter.instance,
                 builder: (context, _) => Column(
@@ -91,37 +100,75 @@ class _AlertCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const white = TextStyle(color: Colors.white);
     return Material(
-      color: alert.color,
-      elevation: 6,
-      borderRadius: BorderRadius.circular(10),
+      color: AppColors.surfaceHigh,
+      elevation: 10,
+      shadowColor: alert.color.withValues(alpha: 0.5),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: alert.color, width: 1.5),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(alert.icon, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(alert.title,
-                      style: white.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 2),
-                  Text(alert.body, style: white),
-                ],
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: alert.color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(alert.icon, color: alert.color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(alert.title, style: AppTextStyles.heading3()),
+                      const SizedBox(height: 2),
+                      Text(alert.body,
+                          style: AppTextStyles.bodyMedium(AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            if (alert.actionLabel != null && alert.onAction != null)
-              TextButton(
-                onPressed: () => alert.onAction!(),
-                child: Text(alert.actionLabel!, style: white),
-              ),
-            TextButton(
-              onPressed: () => AlertCenter.instance.dismiss(alert.id),
-              child: const Text('إخفاء', style: white),
+            const SizedBox(height: 10),
+            // الأزرار في Wrap تحت النص: لا تتجاوز العرض في النوافذ الضيقة.
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (alert.actionLabel != null && alert.onAction != null)
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: alert.color,
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(0, 38),
+                    ),
+                    onPressed: () => alert.onAction!(),
+                    child: Text(alert.actionLabel!),
+                  ),
+                if (alert.secondaryLabel != null && alert.onSecondary != null)
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38)),
+                    onPressed: () => alert.onSecondary!(),
+                    child: Text(alert.secondaryLabel!),
+                  ),
+                TextButton(
+                  onPressed: () => AlertCenter.instance.dismiss(alert.id),
+                  child: const Text('إخفاء'),
+                ),
+              ],
             ),
           ],
         ),

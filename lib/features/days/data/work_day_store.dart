@@ -1,36 +1,33 @@
-import 'package:isar/isar.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import '../../carts/data/models/cart_models.dart';
-import 'models/work_day_model.dart';
+import '../../../core/database/db_utils.dart';
+import '../domain/entities/work_day.dart';
 
-/// منطق مشترك بين مستودعَي الأيام والسلال لضمان وجود يوم مفتوح.
+WorkDay workDayFromRow(Map<String, Object?> r) => WorkDay(
+      id: r['id'] as int,
+      startedAt: parseDbTime(r['started_at']),
+      endedAt: parseDbTimeOrNull(r['ended_at']),
+    );
+
+/// منطق مشترك لضمان وجود يوم عمل مفتوح (يُستدعى داخل معاملة كتابة).
 class WorkDayStore {
   WorkDayStore._();
 
-  static Future<WorkDayModel?> findOpen(Isar isar) {
-    return isar.workDayModels
-        .filter()
-        .endedAtIsNull()
-        .sortByStartedAtDesc()
-        .findFirst();
+  static Future<WorkDay?> findOpen(DatabaseExecutor ex) async {
+    final rows = await ex.query(
+      'work_days',
+      where: 'ended_at IS NULL',
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : workDayFromRow(rows.first);
   }
 
-  /// يجب استدعاؤها داخل `writeTxn`. عند إنشاء أول يوم تُنسب إليه السلال
-  /// القديمة (التي لا تحمل dayId) حتى لا تبقى بلا يوم.
-  static Future<WorkDayModel> ensureOpenDay(Isar isar) async {
-    final open = await findOpen(isar);
+  static Future<WorkDay> ensureOpenDay(DatabaseExecutor ex) async {
+    final open = await findOpen(ex);
     if (open != null) return open;
-
-    final day = WorkDayModel()..startedAt = DateTime.now();
-    await isar.workDayModels.put(day);
-
-    final orphans = await isar.cartModels.filter().dayIdIsNull().findAll();
-    if (orphans.isNotEmpty) {
-      for (final cart in orphans) {
-        cart.dayId = day.id;
-      }
-      await isar.cartModels.putAll(orphans);
-    }
-    return day;
+    final now = DateTime.now();
+    final id = await ex.insert('work_days', {'started_at': dbTime(now)});
+    return WorkDay(id: id, startedAt: now);
   }
 }
