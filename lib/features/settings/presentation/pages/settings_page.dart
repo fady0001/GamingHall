@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -22,6 +23,7 @@ import '../../domain/entities/app_settings.dart';
 import '../cubit/settings_cubit.dart';
 import '../widgets/backup_section.dart';
 import '../widgets/change_password_dialog.dart';
+import '../widgets/demo_data_section.dart';
 
 /// الإعدادات (للمدير فقط).
 class SettingsPage extends StatefulWidget {
@@ -322,6 +324,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ]),
                     _card('النسخ الاحتياطي', Icons.backup_rounded, const [BackupSection()]),
+                    if (kDebugMode)
+                      _card('أدوات التجربة (للتطوير)', Icons.science_rounded, const [DemoDataSection()]),
                     _card('حول التطبيق', Icons.info_outline_rounded, [
                       Text('${AppInfo.englishName} — ${AppInfo.arabicName}  (الإصدار ${AppInfo.version})',
                           style: AppTextStyles.bodyLarge()),

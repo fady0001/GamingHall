@@ -452,6 +452,10 @@ void main() {
       expect(report.summary.revenue, 12000);
       expect(report.topItemsByQuantity.single.name, 'وجبة');
       expect(report.topItemsByQuantity.single.quantity, 1);
+      expect(report.summary.maxInvoice, 12000);
+      expect(report.summary.sessions, 1);
+      expect(report.bookingsCount, 0);
+      expect(report.cancelledBookings, 0);
     });
   });
 

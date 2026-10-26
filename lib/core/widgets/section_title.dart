@@ -8,14 +8,18 @@ class SectionTitle extends StatelessWidget {
   final IconData? icon;
   final Widget? trailing;
 
-  const SectionTitle({super.key, required this.title, this.icon, this.trailing});
+  /// لون الأيقونة (الافتراضي بنفسجي فاتح).
+  final Color? color;
+
+  const SectionTitle(
+      {super.key, required this.title, this.icon, this.trailing, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 20, color: AppColors.primaryLight),
+          Icon(icon, size: 20, color: color ?? AppColors.primaryLight),
           const SizedBox(width: 8),
         ],
         Expanded(child: Text(title, style: AppTextStyles.heading3())),

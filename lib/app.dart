@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:gaming_hall/core/debug/demo_data_service.dart';
 
 import 'core/alerts/alert_center.dart';
 import 'core/backup/backup_service.dart';
@@ -118,8 +119,13 @@ class _Providers extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RepositoryProvider<BackupService>.value(
-      value: services.backup,
+    return MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider<BackupService>.value(value: services.backup),
+        RepositoryProvider<DemoDataService>(
+          create: (_) => DemoDataService(services.database),
+        ),
+      ],
       child: MultiBlocProvider(
         providers: [
           BlocProvider(create: (_) => ClockCubit()),

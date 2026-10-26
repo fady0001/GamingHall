@@ -48,22 +48,27 @@ class WorkDayRepositoryImpl implements WorkDayRepository {
   }
 
   Future<List<WorkDaySummary>> _loadSummaries(int limit) async {
-    final rows = await _db.raw.rawQuery('''
+    final rows = await _db.raw.rawQuery(
+      '''
       SELECT d.id AS id, d.started_at AS started_at, d.ended_at AS ended_at,
              COUNT(i.id) AS invoice_count,
              COALESCE(SUM(i.final_total), 0) AS revenue
       FROM work_days d
       LEFT JOIN invoices i ON i.day_id = d.id AND i.status = 'closed'
       GROUP BY d.id
-      ORDER BY d.id DESC
+      ORDER BY d.started_at DESC, d.id DESC
       LIMIT ?
-    ''', [limit]);
+    ''',
+      [limit],
+    );
     return rows
-        .map((r) => WorkDaySummary(
-              day: workDayFromRow(r),
-              invoiceCount: r['invoice_count'] as int,
-              totalRevenue: r['revenue'] as int,
-            ))
+        .map(
+          (r) => WorkDaySummary(
+            day: workDayFromRow(r),
+            invoiceCount: r['invoice_count'] as int,
+            totalRevenue: r['revenue'] as int,
+          ),
+        )
         .toList();
   }
 

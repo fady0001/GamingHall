@@ -23,17 +23,19 @@ class ReportRepositoryImpl implements ReportRepository {
       SELECT COUNT(*) AS cnt,
              COALESCE(SUM(final_total), 0) AS revenue,
              COALESCE(SUM(play_total), 0) AS play,
-             COALESCE(SUM(items_total), 0) AS items
+             COALESCE(SUM(items_total), 0) AS items,
+             COALESCE(MAX(final_total), 0) AS max_invoice
       FROM invoices i
       WHERE $closedInRange
     ''', [from, to]);
     final s = summaryRows.first;
     final revenue = _int(s['revenue']);
-    final summary = ReportSummary(
+    var summary = ReportSummary(
       invoiceCount: _int(s['cnt']),
       revenue: revenue,
       playRevenue: _int(s['play']),
       itemsRevenue: _int(s['items']),
+      maxInvoice: _int(s['max_invoice']),
     );
 
     final dailyRows = await db.rawQuery('''
@@ -78,6 +80,15 @@ class ReportRepositoryImpl implements ReportRepository {
           sessions: _int(r['sessions']),
         ),
     ];
+    summary = ReportSummary(
+      invoiceCount: summary.invoiceCount,
+      revenue: summary.revenue,
+      playRevenue: summary.playRevenue,
+      itemsRevenue: summary.itemsRevenue,
+      maxInvoice: summary.maxInvoice,
+      sessions: stats.fold<int>(0, (a, e) => a + e.sessions),
+      playMinutes: stats.fold<int>(0, (a, e) => a + e.minutes),
+    );
     final byRevenue = [...stats]..sort((a, b) => b.revenue.compareTo(a.revenue));
     final byMinutes = [...stats]..sort((a, b) => b.minutes.compareTo(a.minutes));
 
@@ -96,6 +107,13 @@ class ReportRepositoryImpl implements ReportRepository {
       GROUP BY resource_id
       ORDER BY cnt DESC
       LIMIT 5
+    ''', [from, to]);
+
+    final countRows = await db.rawQuery('''
+      SELECT COALESCE(SUM(CASE WHEN status != 'cancelled' THEN 1 ELSE 0 END), 0) AS active,
+             COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
+      FROM bookings
+      WHERE start_at >= ? AND start_at < ?
     ''', [from, to]);
 
     final itemRows = await db.rawQuery('''
@@ -137,6 +155,8 @@ class ReportRepositoryImpl implements ReportRepository {
       busiestHours: [
         for (final r in hourRows) HourStat(_int(r['hour']), _int(r['cnt'])),
       ],
+      bookingsCount: _int(countRows.first['active']),
+      cancelledBookings: _int(countRows.first['cancelled']),
     );
   }
 }

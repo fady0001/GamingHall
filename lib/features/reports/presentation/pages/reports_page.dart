@@ -8,7 +8,6 @@ import '../../../../core/theme/text_styles.dart';
 import '../../../../core/utils/number_format.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/adaptive.dart';
-import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/date_range_dialog.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/page_header.dart';
@@ -16,7 +15,6 @@ import '../../../../core/widgets/section_title.dart';
 import '../../domain/entities/report.dart';
 import '../cubit/reports_cubit.dart';
 import '../widgets/stat_widgets.dart';
-import '../../../resources/domain/entities/resource_kind.dart';
 
 /// التقارير والإحصائيات (للمدير فقط).
 class ReportsPage extends StatefulWidget {
@@ -167,9 +165,17 @@ class _ReportBody extends StatelessWidget {
   final Report report;
   const _ReportBody({required this.report});
 
-  String _hours(int minutes) {
+  static String _money(int v) => formatMoneyWithUnit(Money(v));
+
+  static String _hours(int minutes) {
+    if (minutes < 60) return '$minutes دقيقة';
     final h = minutes / 60;
     return '${h.toStringAsFixed(h >= 10 ? 0 : 1)} ساعة';
+  }
+
+  static String _dayLabel(DailySales d) {
+    final t = DateTime.tryParse(d.date);
+    return t == null ? d.date : '${arabicDayName(t)}  ${d.date.substring(5)}';
   }
 
   @override
@@ -184,196 +190,215 @@ class _ReportBody extends StatelessWidget {
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-          Dimensions.spaceL, 0, Dimensions.spaceL, Dimensions.spaceL),
-      children: [
-        AdaptiveExpandedRow(
-          children: [
-            Expanded(
-              child: KpiCard(
-                label: 'إجمالي المبيعات',
-                value: formatMoneyWithUnit(Money(s.revenue)),
-                icon: Icons.payments_rounded,
-                color: AppColors.secondary,
-              ),
-            ),
-            const SizedBox(width: Dimensions.spaceM),
-            Expanded(
-              child: KpiCard(
-                label: 'عدد الفواتير',
-                value: '${s.invoiceCount}',
-                icon: Icons.receipt_long_rounded,
-                color: AppColors.primaryLight,
-              ),
-            ),
-            const SizedBox(width: Dimensions.spaceM),
-            Expanded(
-              child: KpiCard(
-                label: 'متوسط الفاتورة',
-                value: formatMoneyWithUnit(Money(s.averageInvoice)),
-                icon: Icons.analytics_rounded,
-                color: AppColors.warning,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Dimensions.spaceM),
-        AdaptiveExpandedRow(
-          children: [
-            Expanded(
-              child: KpiCard(
-                label: 'إيراد اللعب',
-                value: formatMoneyWithUnit(Money(s.playRevenue)),
-                icon: Icons.sports_esports_rounded,
-                color: AppColors.statusBusy,
-              ),
-            ),
-            const SizedBox(width: Dimensions.spaceM),
-            Expanded(
-              child: KpiCard(
-                label: 'إيراد المأكولات والمشروبات',
-                value: formatMoneyWithUnit(Money(s.itemsRevenue)),
-                icon: Icons.fastfood_rounded,
-                color: AppColors.accent,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Dimensions.spaceL),
-        if (report.daily.length > 1) ...[
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SectionTitle(title: 'المبيعات اليومية', icon: Icons.bar_chart_rounded),
-                const SizedBox(height: Dimensions.spaceM),
-                SimpleBarChart(
-                  data: [
-                    for (final d in report.daily)
-                      BarDatum(
-                        d.date.substring(5),
-                        d.revenue,
-                        groupThousands(d.revenue),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: Dimensions.spaceM),
-        ],
-        AdaptiveExpandedRow(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _panel(
-                'الأكثر ربحًا',
-                Icons.emoji_events_rounded,
-                RankList(items: [
-                  for (final r in report.topByRevenue)
-                    RankItem(r.name, r.revenue, formatMoneyWithUnit(Money(r.revenue))),
-                ]),
-              ),
-            ),
-            const SizedBox(width: Dimensions.spaceM),
-            Expanded(
-              child: _panel(
-                'الأكثر لعبًا (بالساعات)',
-                Icons.timer_rounded,
-                RankList(
-                  color: AppColors.statusBusy,
-                  items: [
-                    for (final r in report.topByMinutes)
-                      RankItem(r.name, r.minutes, _hours(r.minutes)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Dimensions.spaceM),
-        AdaptiveExpandedRow(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _panel(
-                'الأكثر حجزًا',
-                Icons.event_available_rounded,
-                RankList(
-                  color: AppColors.warning,
-                  items: [
-                    for (final b in report.topByBookings)
-                      RankItem(b.resourceName, b.count, '${b.count} حجز'),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: Dimensions.spaceM),
-            Expanded(
-              child: _panel(
-                'الأصناف الأكثر مبيعًا',
-                Icons.local_fire_department_rounded,
-                RankList(
-                  color: AppColors.accent,
-                  items: [
-                    for (final i in report.topItemsByQuantity)
-                      RankItem(i.name, i.quantity, '${i.quantity} قطعة'),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Dimensions.spaceM),
-        AdaptiveExpandedRow(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _panel(
-                'الإيراد حسب نوع اللعب',
-                Icons.pie_chart_rounded,
-                RankList(
-                  items: [
-                    for (final k in report.revenueByKind)
-                      RankItem(k.label, k.revenue, formatMoneyWithUnit(Money(k.revenue))),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: Dimensions.spaceM),
-            Expanded(
-              child: _panel(
-                'ساعات الذروة (بداية اللعب)',
-                Icons.schedule_rounded,
-                report.busiestHours.isEmpty
-                    ? Text('لا توجد بيانات', style: AppTextStyles.bodyMedium(AppColors.textMuted))
-                    : SimpleBarChart(
-                        height: 170,
-                        color: AppColors.secondary,
-                        data: [
-                          for (final h in report.busiestHours)
-                            BarDatum(formatHourMinute(h.hour, 0), h.sessions, '${h.sessions}'),
-                        ],
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+    final best = report.bestDay;
+    final worst = report.worstDay;
+    final peak = report.peakHour;
+    final topRevenue = report.topByRevenue.isEmpty ? null : report.topByRevenue.first;
+    final topMinutes = report.topByMinutes.isEmpty ? null : report.topByMinutes.first;
+    final topBooked = report.topByBookings.isEmpty ? null : report.topByBookings.first;
+    final topItem =
+        report.topItemsByQuantity.isEmpty ? null : report.topItemsByQuantity.first;
+    // لون واحد لكل مجموعة؛ الأخضر والأحمر محجوزان لمعنى (أفضل/أضعف).
+    const cSales = AppColors.secondary;
+    final cIncome = AppColors.primaryLight;
+    const cActivity = AppColors.info;
+    const cBest = AppColors.warning;
+    final pad = context.isPhone ? Dimensions.spaceM : Dimensions.spaceL;
 
-  Widget _panel(String title, IconData icon, Widget child) {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SectionTitle(title: title, icon: icon),
+    return ListView(
+      padding: EdgeInsets.fromLTRB(pad, 0, pad, pad),
+      children: [
+        // ── 1) المبيعات ───────────────────────────────────────────────
+        const SectionTitle(
+            title: 'المبيعات', icon: Icons.payments_rounded, color: cSales),
+        const SizedBox(height: Dimensions.spaceS),
+        KpiGrid(children: [
+          KpiCard(
+            label: 'إجمالي المبيعات',
+            value: _money(s.revenue),
+            hint: 'من ${s.invoiceCount} فاتورة مغلقة',
+            icon: Icons.payments_rounded,
+            color: cSales,
+          ),
+          KpiCard(
+            label: 'متوسط الفاتورة',
+            value: _money(s.averageInvoice),
+            hint: 'إجمالي المبيعات ÷ عدد الفواتير',
+            icon: Icons.analytics_rounded,
+            color: cSales,
+          ),
+          KpiCard(
+            label: 'أعلى فاتورة',
+            value: _money(s.maxInvoice),
+            icon: Icons.trending_up_rounded,
+            color: cSales,
+          ),
+        ]),
+
+        // ── 2) مصادر الدخل: اللعب مقابل المأكولات ─────────────────────
+        const SizedBox(height: Dimensions.spaceL),
+        SectionTitle(
+            title: 'مصادر الدخل',
+            icon: Icons.account_balance_wallet_rounded,
+            color: cIncome),
+        const SizedBox(height: Dimensions.spaceS),
+        KpiGrid(children: [
+          KpiCard(
+            label: 'إيراد اللعب',
+            value: _money(s.playRevenue),
+            hint: '${s.playSharePercent}% من الإجمالي',
+            icon: Icons.sports_esports_rounded,
+            color: cIncome,
+          ),
+          KpiCard(
+            label: 'إيراد المأكولات والمشروبات',
+            value: _money(s.itemsRevenue),
+            hint: '${s.itemsSharePercent}% من الإجمالي',
+            icon: Icons.fastfood_rounded,
+            color: cIncome,
+          ),
+        ]),
+
+        // ── 2-ب) تفصيل إيراد اللعب حسب النوع ─────────────────────────
+        if (report.revenueByKind.isNotEmpty) ...[
+          const SizedBox(height: Dimensions.spaceL),
+          SectionTitle(
+              title: 'إيراد اللعب حسب النوع',
+              icon: Icons.category_rounded,
+              color: cIncome),
           const SizedBox(height: Dimensions.spaceS),
-          child,
+          KpiGrid(children: [
+            for (final k in report.revenueByKind)
+              KpiCard(
+                label: k.label,
+                value: _money(k.revenue),
+                hint: s.playRevenue == 0
+                    ? null
+                    : '${(k.revenue * 100 / s.playRevenue).round()}% من إيراد اللعب',
+                icon: Icons.category_rounded,
+                color: cIncome,
+              ),
+          ]),
         ],
-      ),
+
+        // ── 3) نشاط الصالة ────────────────────────────────────────────
+        const SizedBox(height: Dimensions.spaceL),
+        const SectionTitle(
+            title: 'نشاط الصالة', icon: Icons.timer_rounded, color: cActivity),
+        const SizedBox(height: Dimensions.spaceS),
+        KpiGrid(children: [
+          KpiCard(
+            label: 'عدد جلسات اللعب',
+            value: '${s.sessions}',
+            icon: Icons.play_circle_rounded,
+            color: cActivity,
+          ),
+          KpiCard(
+            label: 'إجمالي ساعات اللعب',
+            value: _hours(s.playMinutes),
+            icon: Icons.hourglass_bottom_rounded,
+            color: cActivity,
+          ),
+          KpiCard(
+            label: 'متوسط مدة الجلسة',
+            value: describeMinutes(s.averageSessionMinutes),
+            icon: Icons.av_timer_rounded,
+            color: cActivity,
+          ),
+          if (peak != null)
+            KpiCard(
+              label: 'ساعة الذروة',
+              value: formatHourMinute(peak.hour, 0),
+              hint: '${peak.sessions} جلسة بدأت فيها',
+              icon: Icons.schedule_rounded,
+              color: cActivity,
+            ),
+          KpiCard(
+            label: 'الحجوزات',
+            value: '${report.bookingsCount}',
+            hint: report.cancelledBookings == 0
+                ? 'لا توجد حجوزات ملغاة'
+                : '${report.cancelledBookings} حجز ملغى',
+            icon: Icons.event_available_rounded,
+            color: cActivity,
+          ),
+        ]),
+
+        // ── 4) الأيام (فقط عند وجود أكثر من يوم) ─────────────────────
+        if (report.activeDays > 1 && best != null && worst != null) ...[
+          const SizedBox(height: Dimensions.spaceL),
+          const SectionTitle(
+              title: 'الأيام',
+              icon: Icons.calendar_month_rounded,
+              color: cActivity),
+          const SizedBox(height: Dimensions.spaceS),
+          KpiGrid(children: [
+            KpiCard(
+              label: 'متوسط المبيعات اليومي',
+              value: _money(report.averageDaily),
+              hint: 'على ${report.activeDays} يوم عمل',
+              icon: Icons.calendar_view_day_rounded,
+              color: cActivity,
+            ),
+            KpiCard(
+              label: 'أفضل يوم',
+              value: _money(best.revenue),
+              hint: _dayLabel(best),
+              icon: Icons.arrow_upward_rounded,
+              color: AppColors.success,
+            ),
+            KpiCard(
+              label: 'أضعف يوم',
+              value: _money(worst.revenue),
+              hint: _dayLabel(worst),
+              icon: Icons.arrow_downward_rounded,
+              color: AppColors.danger,
+            ),
+          ]),
+        ],
+
+        // ── 5) الأفضل أداءً ───────────────────────────────────────────
+        const SizedBox(height: Dimensions.spaceL),
+        const SectionTitle(
+            title: 'الأفضل أداءً',
+            icon: Icons.emoji_events_rounded,
+            color: cBest),
+        const SizedBox(height: Dimensions.spaceS),
+        KpiGrid(children: [
+          if (topRevenue != null)
+            KpiCard(
+              label: 'الأكثر ربحًا',
+              value: topRevenue.name,
+              hint: _money(topRevenue.revenue),
+              icon: Icons.emoji_events_rounded,
+              color: cBest,
+            ),
+          if (topMinutes != null)
+            KpiCard(
+              label: 'الأكثر لعبًا',
+              value: topMinutes.name,
+              hint: _hours(topMinutes.minutes),
+              icon: Icons.timer_rounded,
+              color: cBest,
+            ),
+          if (topBooked != null)
+            KpiCard(
+              label: 'الأكثر حجزًا',
+              value: topBooked.resourceName,
+              hint: '${topBooked.count} حجز',
+              icon: Icons.event_available_rounded,
+              color: cBest,
+            ),
+          if (topItem != null)
+            KpiCard(
+              label: 'الصنف الأكثر مبيعًا',
+              value: topItem.name,
+              hint: '${topItem.quantity} قطعة  •  ${_money(topItem.revenue)}',
+              icon: Icons.local_fire_department_rounded,
+              color: cBest,
+            ),
+        ]),
+      ],
     );
   }
 }
