@@ -25,6 +25,9 @@ UninstallDisplayIcon={app}\{#MyAppExe}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; عربي فقط: بدون شاشة اختيار اللغة، ولا اعتماد على لغة ويندوز
+ShowLanguageDialog=no
+LanguageDetectionMethod=none
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; التطبيق يبقى شغّالًا بالخلفية (System Tray): نغلقه تلقائيًا عند التحديث/الإزالة
@@ -32,11 +35,13 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
-; العربية إن كان ملفها موجودًا مع Inno Setup، وإلا تُترك الإنجليزية فقط (بدون خطأ)
+; عربي فقط: لا توجد لغة ثانية ولا شاشة اختيار لغة.
+; إن كان Arabic.isl موجودًا ضمن Inno Setup نستخدمه، وإلا نستخدم النسخة المرفقة بجانب هذا الملف.
 #if FileExists(CompilerPath + "Languages\Arabic.isl")
 Name: "arabic"; MessagesFile: "compiler:Languages\Arabic.isl"
+#else
+Name: "arabic"; MessagesFile: "Arabic.isl"
 #endif
-Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 ; أيقونة سطح المكتب: محدّدة افتراضيًا

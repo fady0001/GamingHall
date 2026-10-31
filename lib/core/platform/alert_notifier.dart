@@ -26,6 +26,15 @@ class AlertNotifier {
     }
   }
 
+  /// يُستدعى عند إنهاء التطبيق لتحرير مشغّل الصوت.
+  Future<void> dispose() async {
+    try {
+      await _player.dispose();
+    } catch (e) {
+      debugPrint('audio dispose failed: $e');
+    }
+  }
+
   Future<void> playChime() async {
     try {
       await _player.stop();

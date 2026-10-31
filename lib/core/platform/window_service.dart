@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -23,6 +25,10 @@ class WindowService with WindowListener, TrayListener {
   bool _asking = false;
   bool _trayReady = false;
   bool _hintShown = false;
+
+  /// يُضبط من app.dart بعد فتح قاعدة البيانات: إيقاف المؤقتات وإغلاق القاعدة
+  /// بشكل سليم قبل إنهاء العملية.
+  Future<void> Function()? beforeExit;
 
   Future<void> init() async {
     await windowManager.ensureInitialized();
@@ -134,11 +140,27 @@ class WindowService with WindowListener, TrayListener {
     }
   }
 
+  /// إنهاء سريع وآمن: نخفي النافذة فورًا (حتى لا يبدو التطبيق متجمّدًا)، ننظّف
+  /// ما يلزم بمهلة قصوى لكل خطوة، ثم ننهي العملية مباشرة بدل انتظار إيقاف
+  /// محرّك Flutter الذي قد يطول عدّة ثوانٍ.
   Future<void> _destroy() async {
     try {
-      await trayManager.destroy();
+      await windowManager.hide();
     } catch (_) {}
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+
+    Future<void> guarded(Future<void> Function() step, int seconds) async {
+      try {
+        await step().timeout(Duration(seconds: seconds));
+      } catch (e) {
+        debugPrint('خطوة إنهاء متعثّرة: $e');
+      }
+    }
+
+    final cleanup = beforeExit;
+    if (cleanup != null) await guarded(cleanup, 4);
+    await guarded(AlertNotifier.instance.dispose, 2);
+    await guarded(() => trayManager.destroy(), 2);
+
+    exit(0);
   }
 }

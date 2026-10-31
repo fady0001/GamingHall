@@ -2,6 +2,11 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <objbase.h>
+#include <shobjidl.h>
+
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 #include "resource.h"
 
@@ -52,6 +57,104 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
   }
   FreeLibrary(user32_module);
 }
+
+// Private message used to re-apply the icons once a show has fully completed.
+constexpr UINT kReapplyIconsMessage = WM_APP + 0x4A1;
+
+// Re-applies the app icon (big + small) to the window and to the window class.
+// Windows can drop the taskbar button icon (it turns blank/white) when a hidden
+// window is shown again or when the taskbar is re-created, so this is called at
+// those points.
+void ApplyWindowIcons(HWND hwnd) {
+  if (!hwnd) {
+    return;
+  }
+  HINSTANCE instance = GetModuleHandle(nullptr);
+  HICON big_icon = static_cast<HICON>(
+      LoadImage(instance, MAKEINTRESOURCE(IDI_APP_ICON), IMAGE_ICON,
+                GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON),
+                LR_SHARED));
+  HICON small_icon = static_cast<HICON>(
+      LoadImage(instance, MAKEINTRESOURCE(IDI_APP_ICON), IMAGE_ICON,
+                GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+                LR_SHARED));
+  if (big_icon) {
+    SendMessage(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big_icon));
+    SetClassLongPtr(hwnd, GCLP_HICON, reinterpret_cast<LONG_PTR>(big_icon));
+  }
+  if (small_icon) {
+    SendMessage(hwnd, WM_SETICON, ICON_SMALL,
+                reinterpret_cast<LPARAM>(small_icon));
+    SetClassLongPtr(hwnd, GCLP_HICONSM, reinterpret_cast<LONG_PTR>(small_icon));
+  }
+}
+
+// Property keys of System.AppUserModel.* (fmtid 9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3).
+const PROPERTYKEY kPkeyRelaunchCommand = {
+    {0x9F4C2855, 0x9F79, 0x4B39,
+     {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}},
+    2};
+const PROPERTYKEY kPkeyRelaunchIconResource = {
+    {0x9F4C2855, 0x9F79, 0x4B39,
+     {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}},
+    3};
+const PROPERTYKEY kPkeyRelaunchDisplayName = {
+    {0x9F4C2855, 0x9F79, 0x4B39,
+     {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}},
+    4};
+const PROPERTYKEY kPkeyAppUserModelId = {
+    {0x9F4C2855, 0x9F79, 0x4B39,
+     {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}},
+    5};
+
+bool SetStringProperty(IPropertyStore* store, const PROPERTYKEY& key,
+                       const std::wstring& value) {
+  PROPVARIANT pv;
+  PropVariantInit(&pv);
+  const size_t bytes = (value.size() + 1) * sizeof(wchar_t);
+  pv.vt = VT_LPWSTR;
+  pv.pwszVal = static_cast<LPWSTR>(CoTaskMemAlloc(bytes));
+  if (!pv.pwszVal) {
+    return false;
+  }
+  memcpy(pv.pwszVal, value.c_str(), bytes);
+  HRESULT hr = store->SetValue(key, pv);
+  PropVariantClear(&pv);
+  return SUCCEEDED(hr);
+}
+
+// Gives the window its own taskbar identity (AppUserModelID) together with an
+// explicit icon. Without this the taskbar button can borrow the icon of the
+// Start-menu shortcut that the notifications plugin creates for the process,
+// and that icon can be blank, which shows up as a white icon after the window
+// was hidden to the tray and shown again.
+void ApplyWindowTaskbarIdentity(HWND hwnd) {
+  if (!hwnd) {
+    return;
+  }
+  wchar_t exe_path[MAX_PATH];
+  const DWORD len = GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+  if (len == 0 || len >= MAX_PATH) {
+    return;
+  }
+  const std::wstring exe(exe_path);
+
+  IPropertyStore* store = nullptr;
+  if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&store))) ||
+      !store) {
+    return;
+  }
+  // Relaunch command, icon and display name must be set together.
+  SetStringProperty(store, kPkeyRelaunchCommand, L"\"" + exe + L"\"");
+  SetStringProperty(store, kPkeyRelaunchIconResource, exe + L",0");
+  SetStringProperty(store, kPkeyRelaunchDisplayName, L"Gaming Hall");
+  SetStringProperty(store, kPkeyAppUserModelId, L"GamingHall.MainWindow");
+  store->Commit();
+  store->Release();
+}
+
+// Message id Explorer broadcasts when the taskbar is (re)created.
+UINT g_taskbar_created_message = 0;
 
 }  // namespace
 
@@ -146,6 +249,10 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  g_taskbar_created_message = RegisterWindowMessage(L"TaskbarCreated");
+  ApplyWindowTaskbarIdentity(window);
+  ApplyWindowIcons(window);
+
   return OnCreate();
 }
 
@@ -178,7 +285,24 @@ Win32Window::MessageHandler(HWND hwnd,
                             UINT const message,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
+  if (g_taskbar_created_message != 0 && message == g_taskbar_created_message) {
+    ApplyWindowIcons(hwnd);
+  }
+
   switch (message) {
+    case WM_SHOWWINDOW:
+      if (wparam) {
+        ApplyWindowIcons(hwnd);
+        // Once more after the show has finished (the taskbar button is
+        // created after this message).
+        PostMessage(hwnd, kReapplyIconsMessage, 0, 0);
+      }
+      break;
+
+    case kReapplyIconsMessage:
+      ApplyWindowIcons(hwnd);
+      return 0;
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();

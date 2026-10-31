@@ -66,6 +66,10 @@ class _GamingHallAppState extends State<GamingHallApp> {
     final services = await AppServices.create();
     await AlertNotifier.instance.init();
     services.backup.startAutoBackup();
+    WindowService.instance.beforeExit = () async {
+      services.backup.stopAutoBackup();
+      await services.database.close();
+    };
     return _BootResult(license, path, services);
   }
 
