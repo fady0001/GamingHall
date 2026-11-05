@@ -21,6 +21,7 @@ import '../../../settings/domain/entities/app_settings.dart';
 import '../../../settings/presentation/cubit/settings_cubit.dart';
 import '../../domain/entities/invoice.dart';
 import '../cubit/invoices_cubit.dart';
+import '../widgets/checkout_dialog.dart';
 import '../widgets/invoice_summary_card.dart';
 import '../widgets/item_line_tile.dart';
 import '../widgets/menu_picker_panel.dart';
@@ -51,21 +52,23 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
     final totals = invoice.totalsAt(DateTime.now(), settings.billingPolicy);
     final running = invoice.runningLines;
 
-    final ok = await showConfirmDialog(
+    final finalName = await showCheckoutDialog(
       context,
-      title: 'محاسبة الفاتورة؟',
+      customerName: invoice.customerName,
       message:
           'الإجمالي ${formatMoneyWithUnit(totals.finalTotal)}.'
           '${running.isEmpty ? '' : '\nسيتوقف الوقت الآن على: ${running.map((l) => l.resourceName).join('، ')}.'}'
-          '\nبعد المحاسبة لا يمكن تعديل الفاتورة.',
-      confirmLabel: 'محاسبة وإغلاق',
-      icon: Icons.point_of_sale_rounded,
+          '\nبعد المحاسبة لا يمكن تعديل الفاتورة ولا اسم الزبون.',
     );
-    if (!ok || !mounted) return;
+    if (finalName == null || !mounted) return;
 
     setState(() => _busy = true);
     try {
-      final closed = await context.read<InvoicesCubit>().checkout(invoice.id);
+      final closed = await context.read<InvoicesCubit>().checkout(
+            invoice.id,
+            // نمرّر الاسم فقط إن تغيّر، فلا نلمس الاسم الأصلي بلا داعٍ.
+            customerName: finalName == invoice.customerName ? null : finalName,
+          );
       if (!mounted) return;
       showAppSnack(
         context,

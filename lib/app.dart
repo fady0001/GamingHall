@@ -138,7 +138,12 @@ class _Providers extends StatelessWidget {
           BlocProvider(create: (_) => SettingsCubit(services.settings)),
           BlocProvider(create: (_) => AuthCubit(services.auth)),
           BlocProvider(create: (_) => ResourcesCubit(services.resources)),
-          BlocProvider(create: (_) => MenuCubit(services.menu)),
+          BlocProvider(
+            create: (ctx) => MenuCubit(
+              services.menu,
+              isManager: () => ctx.read<AuthCubit>().state.isManager,
+            ),
+          ),
           BlocProvider(create: (_) => WorkDayCubit(services.days)),
           BlocProvider(create: (_) => InvoicesCubit(services.invoices, services.days)),
           BlocProvider(create: (_) => BookingsCubit(services.bookings)),

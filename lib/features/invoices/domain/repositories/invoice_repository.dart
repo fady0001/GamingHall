@@ -63,7 +63,10 @@ abstract class InvoiceRepository {
   Future<void> setItemQuantity(int itemLineId, int quantity);
 
   /// "الحساب": يوقف أي لعب جارٍ، يحسب المجاميع بقواعد التسعير، ويغلق الفاتورة.
-  Future<Invoice> checkout(int invoiceId);
+  ///
+  /// إن مُرِّر [customerName] يُحدَّث اسم الزبون داخل نفس المعاملة قبل الإغلاق
+  /// (تعديل الاسم ممكن فقط قبل الإغلاق؛ بعده تُقفل الفاتورة نهائيًا).
+  Future<Invoice> checkout(int invoiceId, {String? customerName});
 
   /// يحذف فاتورة مفتوحة فارغة تمامًا (أُنشئت بالخطأ). غير ممكن بعد أي لعب أو طلب.
   Future<void> deleteIfEmpty(int invoiceId);

@@ -11,13 +11,15 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/friendly_error.dart';
 import '../../../../core/widgets/page_header.dart';
 import '../../../../core/widgets/snackbars.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../domain/entities/menu_category.dart';
 import '../../domain/entities/menu_item_entity.dart';
 import '../cubit/menu_cubit.dart';
 import '../widgets/menu_item_form_dialog.dart';
 
 /// (قائمة المشتريات): المأكولات والمشروبات والأراكيل وأي صنف آخر.
-/// متاحة للمدير والموظف بنفس الصلاحيات (إضافة/تعديل/حذف).
+/// المدير: تحكم كامل (إضافة/تعديل/حذف). الموظف: عرض القائمة وإضافة صنف فقط،
+/// بلا تعديل ولا حذف.
 class MenuAdminPage extends StatelessWidget {
   const MenuAdminPage({super.key});
 
@@ -40,13 +42,16 @@ class MenuAdminPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<MenuCubit>().state;
+    final isManager = context.watch<AuthCubit>().state.isManager;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PageHeader(
           title: 'قائمة المشتريات',
-          subtitle: 'المأكولات والمشروبات والأراكيل التي يبيعها الموظف ضمن الفواتير',
+          subtitle: isManager
+              ? 'المأكولات والمشروبات والأراكيل التي يبيعها الموظف ضمن الفواتير'
+              : 'عرض الأصناف وإضافة صنف جديد. التعديل والحذف من صلاحيات المدير.',
           actions: [
             SizedBox(
               height: Dimensions.buttonHeightLarge,
@@ -77,7 +82,7 @@ class MenuAdminPage extends StatelessWidget {
                           Dimensions.spaceL, 0, Dimensions.spaceL, Dimensions.spaceL),
                       children: [
                         for (final c in MenuCategory.values)
-                          ..._section(context, c, state.byCategory(c)),
+                          ..._section(context, c, state.byCategory(c), isManager),
                       ],
                     ),
         ),
@@ -85,7 +90,12 @@ class MenuAdminPage extends StatelessWidget {
     );
   }
 
-  List<Widget> _section(BuildContext context, MenuCategory c, List<MenuItemEntity> items) {
+  List<Widget> _section(
+    BuildContext context,
+    MenuCategory c,
+    List<MenuItemEntity> items,
+    bool isManager,
+  ) {
     if (items.isEmpty) return const [];
     return [
       Padding(
@@ -114,17 +124,20 @@ class MenuAdminPage extends StatelessWidget {
                 Expanded(child: Text(item.name, style: AppTextStyles.bodyLarge())),
                 Text(formatMoneyWithUnit(item.price),
                     style: AppTextStyles.price(AppColors.secondary, 16)),
-                const SizedBox(width: Dimensions.spaceM),
-                IconButton(
-                  tooltip: 'تعديل',
-                  onPressed: () => showMenuItemFormDialog(context, existing: item),
-                  icon: const Icon(Icons.edit_rounded),
-                ),
-                IconButton(
-                  tooltip: 'حذف',
-                  onPressed: () => _delete(context, item),
-                  icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-                ),
+                if (isManager) ...[
+                  const SizedBox(width: Dimensions.spaceM),
+                  IconButton(
+                    tooltip: 'تعديل',
+                    onPressed: () => showMenuItemFormDialog(context, existing: item),
+                    icon: const Icon(Icons.edit_rounded),
+                  ),
+                  IconButton(
+                    tooltip: 'حذف',
+                    onPressed: () => _delete(context, item),
+                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                  ),
+                ] else
+                  const SizedBox(height: 40),
               ],
             ),
           ),

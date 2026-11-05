@@ -479,7 +479,17 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
   }
 
   @override
-  Future<Invoice> checkout(int invoiceId) async {
+  Future<Invoice> checkout(int invoiceId, {String? customerName}) async {
+    // نتحقق من الاسم قبل أي كتابة حتى لا يُغلق شيء إن كان الاسم غير صالح.
+    String? newName;
+    if (customerName != null) {
+      newName = customerName.trim();
+      if (newName.isEmpty) throw ArgumentError('اسم الزبون مطلوب');
+      if (newName.length > InvoiceStore.maxNameLength) {
+        throw ArgumentError(
+            'اسم الزبون طويل (الحد الأقصى ${InvoiceStore.maxNameLength} حرفًا)');
+      }
+    }
     await _db.write((txn) async {
       await _requireOpenInvoice(txn, invoiceId);
       final now = DateTime.now();
@@ -519,10 +529,11 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
         policy: policy,
       );
 
-      // 3) إغلاق الفاتورة بتثبيت المجاميع.
+      // 3) إغلاق الفاتورة بتثبيت المجاميع (مع الاسم النهائي إن عُدِّل).
       await txn.update(
         'invoices',
         {
+          if (newName != null) 'customer_name': newName,
           'status': 'closed',
           'closed_at': dbTime(now),
           'play_total': totals.playTotal.amount,

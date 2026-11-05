@@ -91,7 +91,8 @@ class InvoicesCubit extends Cubit<InvoicesState> {
   Future<void> setItemQuantity(int itemLineId, int quantity) =>
       _repository.setItemQuantity(itemLineId, quantity);
 
-  Future<Invoice> checkout(int invoiceId) => _repository.checkout(invoiceId);
+  Future<Invoice> checkout(int invoiceId, {String? customerName}) =>
+      _repository.checkout(invoiceId, customerName: customerName);
 
   Future<void> deleteIfEmpty(int invoiceId) => _repository.deleteIfEmpty(invoiceId);
 
