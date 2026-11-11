@@ -20,7 +20,7 @@ class MenuRepositoryImpl implements MenuRepository {
   Future<List<MenuItemEntity>> _loadAll() async {
     final rows = await _db.raw.query(
       'menu_items',
-      where: 'is_active = 1',
+      where: 'is_active = 1 AND is_sellable = 1',
       orderBy: 'category ASC, name COLLATE NOCASE ASC',
     );
     return rows.map(menuItemFromRow).toList();
@@ -45,13 +45,39 @@ class MenuRepositoryImpl implements MenuRepository {
   Future<MenuItemEntity> add(MenuItemEntity item) async {
     _validate(item);
     try {
-      final id = await _db.write((txn) => txn.insert('menu_items', {
-            'name': item.name.trim(),
-            'category': item.category.name,
-            'price': item.price.amount,
-            'is_active': 1,
-            'created_at': dbTime(DateTime.now()),
-          }));
+      final id = await _db.write((txn) async {
+        // صنف موجود في المخزون ولا يُباع (أُضيف من المشتريات): نحوّله لصنف
+        // يُباع بدل أن نرفض الاسم المكرّر.
+        final hidden = await txn.query(
+          'menu_items',
+          columns: ['id'],
+          where: 'name = ? COLLATE NOCASE AND is_active = 1 AND is_sellable = 0',
+          whereArgs: [item.name.trim()],
+          limit: 1,
+        );
+        if (hidden.isNotEmpty) {
+          final hiddenId = hidden.first['id'] as int;
+          await txn.update(
+            'menu_items',
+            {
+              'category': item.category.name,
+              'price': item.price.amount,
+              'is_sellable': 1,
+            },
+            where: 'id = ?',
+            whereArgs: [hiddenId],
+          );
+          return hiddenId;
+        }
+        return txn.insert('menu_items', {
+          'name': item.name.trim(),
+          'category': item.category.name,
+          'price': item.price.amount,
+          'is_active': 1,
+          'is_sellable': 1,
+          'created_at': dbTime(DateTime.now()),
+        });
+      });
       final rows =
           await _db.raw.query('menu_items', where: 'id = ?', whereArgs: [id]);
       return menuItemFromRow(rows.first);

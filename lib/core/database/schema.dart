@@ -4,7 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class AppSchema {
   AppSchema._();
 
-  static const int version = 4;
+  static const int version = 6;
 
   static const List<String> createStatements = [
     '''
@@ -60,6 +60,11 @@ class AppSchema {
       category TEXT NOT NULL,
       price INTEGER NOT NULL,
       is_active INTEGER NOT NULL DEFAULT 1,
+      track_stock INTEGER NOT NULL DEFAULT 1,
+      min_stock INTEGER NOT NULL DEFAULT 0,
+      unit_cost INTEGER NOT NULL DEFAULT 0,
+      sold_offset INTEGER,
+      is_sellable INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL
     )
     ''',
@@ -140,6 +145,91 @@ class AppSchema {
     )
     ''',
     'CREATE INDEX idx_bookings_start ON bookings(start_at)',
+    ..._stockStatements,
+    'CREATE INDEX IF NOT EXISTS idx_stock_purchases_invoice '
+        'ON stock_purchases(invoice_id)',
+  ];
+
+  /// جداول المخزون (الإصدار 5). تُستخدم عند الإنشاء وعند الترقية معًا، ولذلك
+  /// كلها `IF NOT EXISTS`.
+  ///
+  /// - `stock_purchases`: مشتريات البوفيه بالطرد (عدد الطرود، قطع الطرد، سعر
+  ///   الطرد، وتكلفة القطعة = سعر الطرد ÷ قطع الطرد).
+  /// - `stock_moves`: دفتر حركة الكمية (موجب = دخل مخزون، سالب = تسوية جرد).
+  ///   المبيعات لا تُسجَّل هنا؛ تُحسب من `item_lines`.
+  /// - `stock_counts`: الجرد اليومي (صف واحد لكل صنف في اليوم).
+  static const List<String> _stockStatements = [
+    '''
+    CREATE TABLE IF NOT EXISTS stock_purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      menu_item_id INTEGER NOT NULL,
+      purchased_at TEXT NOT NULL,
+      packs INTEGER NOT NULL,
+      pieces_per_pack INTEGER NOT NULL,
+      pack_price INTEGER NOT NULL,
+      total_pieces INTEGER NOT NULL,
+      unit_cost INTEGER NOT NULL,
+      total_cost INTEGER NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      invoice_id INTEGER,
+      entry_mode TEXT NOT NULL DEFAULT 'pack'
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_stock_purchases_item '
+        'ON stock_purchases(menu_item_id)',
+    'CREATE INDEX IF NOT EXISTS idx_stock_purchases_date '
+        'ON stock_purchases(purchased_at)',
+    '''
+    CREATE TABLE IF NOT EXISTS stock_moves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      menu_item_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      qty INTEGER NOT NULL,
+      purchase_id INTEGER,
+      count_id INTEGER,
+      created_at TEXT NOT NULL,
+      reason TEXT
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_stock_moves_item '
+        'ON stock_moves(menu_item_id)',
+    '''
+    CREATE TABLE IF NOT EXISTS stock_counts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      menu_item_id INTEGER NOT NULL,
+      count_date TEXT NOT NULL,
+      expected INTEGER NOT NULL,
+      counted INTEGER NOT NULL,
+      difference INTEGER NOT NULL,
+      counted_at TEXT NOT NULL
+    )
+    ''',
+    'CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_counts_item_date '
+        'ON stock_counts(menu_item_id, count_date)',
+    // فاتورة المشتريات: رأس الفاتورة. أسطرها في stock_purchases (invoice_id).
+    '''
+    CREATE TABLE IF NOT EXISTS purchase_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchased_at TEXT NOT NULL,
+      supplier TEXT,
+      invoice_no TEXT,
+      note TEXT,
+      discount INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS purchase_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_id INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      paid_at TEXT NOT NULL,
+      note TEXT
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_purchase_payments_invoice '
+        'ON purchase_payments(invoice_id)',
   ];
 
   
@@ -173,6 +263,79 @@ class AppSchema {
     if (oldVersion < 2) await _upgradeTo2(db);
     if (oldVersion < 3) await _upgradeTo3(db);
     if (oldVersion < 4) await _upgradeTo4(db);
+    if (oldVersion < 5) await _upgradeTo5(db);
+    if (oldVersion < 6) await _upgradeTo6(db);
+  }
+
+  static Future<Set<Object?>> _columns(Database db, String table) async {
+    final cols = await db.rawQuery('PRAGMA table_info($table)');
+    return cols.map((c) => c['name']).toSet();
+  }
+
+  /// الإصدار 6: صنف "يُباع/لا يُباع"، فواتير المشتريات (عدة أصناف + دفعات)،
+  /// وسبب التعديل اليدوي للمخزون. مشتريات الإصدار 5 (صنف واحد) تتحوّل كل
+  /// واحدة إلى فاتورة مدفوعة بالكامل.
+  static Future<void> _upgradeTo6(Database db) async {
+    if (!(await _columns(db, 'menu_items')).contains('is_sellable')) {
+      await db.execute(
+          'ALTER TABLE menu_items ADD COLUMN is_sellable INTEGER NOT NULL DEFAULT 1');
+    }
+    final purchaseCols = await _columns(db, 'stock_purchases');
+    if (!purchaseCols.contains('invoice_id')) {
+      await db.execute('ALTER TABLE stock_purchases ADD COLUMN invoice_id INTEGER');
+    }
+    if (!purchaseCols.contains('entry_mode')) {
+      await db.execute(
+          "ALTER TABLE stock_purchases ADD COLUMN entry_mode TEXT NOT NULL DEFAULT 'pack'");
+    }
+    if (!(await _columns(db, 'stock_moves')).contains('reason')) {
+      await db.execute('ALTER TABLE stock_moves ADD COLUMN reason TEXT');
+    }
+    for (final statement in _stockStatements) {
+      await db.execute(statement);
+    }
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_purchases_invoice '
+        'ON stock_purchases(invoice_id)');
+
+    final old = await db.query('stock_purchases', where: 'invoice_id IS NULL');
+    for (final r in old) {
+      final invoiceId = await db.insert('purchase_invoices', {
+        'purchased_at': r['purchased_at'],
+        'note': r['note'],
+        'discount': 0,
+        'created_at': r['created_at'],
+      });
+      await db.insert('purchase_payments', {
+        'invoice_id': invoiceId,
+        'amount': r['total_cost'],
+        'paid_at': r['purchased_at'],
+      });
+      await db.update('stock_purchases', {'invoice_id': invoiceId},
+          where: 'id = ?', whereArgs: [r['id']]);
+    }
+  }
+
+  static Future<void> _upgradeTo5(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(menu_items)');
+    final names = cols.map((c) => c['name']).toSet();
+    if (!names.contains('track_stock')) {
+      await db.execute(
+          'ALTER TABLE menu_items ADD COLUMN track_stock INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!names.contains('min_stock')) {
+      await db.execute(
+          'ALTER TABLE menu_items ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!names.contains('unit_cost')) {
+      await db.execute(
+          'ALTER TABLE menu_items ADD COLUMN unit_cost INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!names.contains('sold_offset')) {
+      await db.execute('ALTER TABLE menu_items ADD COLUMN sold_offset INTEGER');
+    }
+    for (final statement in _stockStatements) {
+      await db.execute(statement);
+    }
   }
 
   static Future<void> _upgradeTo4(Database db) async {

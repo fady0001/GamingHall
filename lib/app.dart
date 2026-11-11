@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:gaming_hall/core/debug/demo_data_service.dart';
-
 import 'core/alerts/alert_center.dart';
 import 'core/backup/backup_service.dart';
 import 'core/constants/app_info.dart';
@@ -24,6 +23,7 @@ import 'features/auth/presentation/pages/setup_page.dart';
 import 'features/bookings/presentation/cubit/bookings_cubit.dart';
 import 'features/days/presentation/cubit/work_day_cubit.dart';
 import 'features/invoices/presentation/cubit/invoices_cubit.dart';
+import 'features/inventory/presentation/cubit/inventory_cubit.dart';
 import 'features/menu/presentation/cubit/menu_cubit.dart';
 import 'features/reminders/presentation/reminders_host.dart';
 import 'features/reports/presentation/cubit/reports_cubit.dart';
@@ -141,6 +141,12 @@ class _Providers extends StatelessWidget {
           BlocProvider(
             create: (ctx) => MenuCubit(
               services.menu,
+              isManager: () => ctx.read<AuthCubit>().state.isManager,
+            ),
+          ),
+          BlocProvider(
+            create: (ctx) => InventoryCubit(
+              services.inventory,
               isManager: () => ctx.read<AuthCubit>().state.isManager,
             ),
           ),

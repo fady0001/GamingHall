@@ -6,6 +6,8 @@ import '../../features/bookings/data/booking_repository_impl.dart';
 import '../../features/bookings/domain/repositories/booking_repository.dart';
 import '../../features/days/data/work_day_repository_impl.dart';
 import '../../features/days/domain/repositories/work_day_repository.dart';
+import '../../features/inventory/data/inventory_repository_impl.dart';
+import '../../features/inventory/domain/repositories/inventory_repository.dart';
 import '../../features/invoices/data/invoice_repository_impl.dart';
 import '../../features/invoices/domain/repositories/invoice_repository.dart';
 import '../../features/menu/data/menu_repository_impl.dart';
@@ -25,6 +27,7 @@ class AppServices {
   final AuthRepository auth;
   final ResourceRepository resources;
   final MenuRepository menu;
+  final InventoryRepository inventory;
   final WorkDayRepository days;
   final InvoiceRepository invoices;
   final BookingRepository bookings;
@@ -37,6 +40,7 @@ class AppServices {
     required this.auth,
     required this.resources,
     required this.menu,
+    required this.inventory,
     required this.days,
     required this.invoices,
     required this.bookings,
@@ -52,6 +56,7 @@ class AppServices {
       auth: AuthRepositoryImpl(db),
       resources: ResourceRepositoryImpl(db),
       menu: MenuRepositoryImpl(db),
+      inventory: InventoryRepositoryImpl(db),
       days: WorkDayRepositoryImpl(db),
       invoices: InvoiceRepositoryImpl(db),
       bookings: BookingRepositoryImpl(db),

@@ -8,6 +8,7 @@ enum Destination {
   bookings,
   menu,
   history,
+  inventory,
   resources,
   reports,
   settings,
@@ -26,6 +27,8 @@ extension DestinationX on Destination {
         return 'قائمة المشتريات';
       case Destination.history:
         return 'سجل الفواتير';
+      case Destination.inventory:
+        return 'المخزون والجرد';
       case Destination.resources:
         return 'الأجهزة والأسعار';
       case Destination.reports:
@@ -47,6 +50,8 @@ extension DestinationX on Destination {
         return Icons.local_cafe_rounded;
       case Destination.history:
         return Icons.history_rounded;
+      case Destination.inventory:
+        return Icons.inventory_2_rounded;
       case Destination.resources:
         return Icons.tune_rounded;
       case Destination.reports:
@@ -61,6 +66,7 @@ extension DestinationX on Destination {
   bool get managerOnly {
     switch (this) {
       case Destination.history:
+      case Destination.inventory:
       case Destination.resources:
       case Destination.reports:
       case Destination.settings:
@@ -75,6 +81,7 @@ extension DestinationX on Destination {
 
   /// يظهر تحت عنوان "الإدارة" في الشريط الجانبي.
   bool get isAdminSection =>
+      this == Destination.inventory ||
       this == Destination.resources ||
       this == Destination.reports ||
       this == Destination.settings;

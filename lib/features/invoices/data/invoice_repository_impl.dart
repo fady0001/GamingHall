@@ -412,7 +412,7 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
 
       final menuRows = await txn.query(
         'menu_items',
-        where: 'id = ? AND is_active = 1',
+        where: 'id = ? AND is_active = 1 AND is_sellable = 1',
         whereArgs: [menuItemId],
         limit: 1,
       );
