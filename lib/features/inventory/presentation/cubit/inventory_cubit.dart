@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/domain/value_objects/money.dart';
@@ -81,23 +82,29 @@ class InventoryCubit extends Cubit<InventoryState> {
       : _isManager = isManager ?? (() => true),
         _countDate = formatDate(DateTime.now()),
         super(InventoryState(countDate: formatDate(DateTime.now()))) {
-    _subs.add(_repository.watchStock().listen(
-          (rows) => emit(state.copyWith(rows: rows, isLoading: false)),
-        ));
-    _subs.add(_repository.watchPurchaseInvoices().listen(
-          (list) => emit(state.copyWith(invoices: list)),
-        ));
-    _subs.add(_repository.watchAdjustments().listen(
-          (list) => emit(state.copyWith(adjustments: list)),
-        ));
+    // نتجاهل أي تحميل لم تتغيّر نتيجته: القاعدة تُرسل إشعارًا عند أي كتابة في
+    // التطبيق كله، ولا نريد إعادة بناء قوائم المخزون الطويلة بلا داعٍ.
+    _subs.add(_repository.watchStock().listen((rows) {
+      if (!state.isLoading && listEquals(rows, state.rows)) return;
+      emit(state.copyWith(rows: rows, isLoading: false));
+    }));
+    _subs.add(_repository.watchPurchaseInvoices().listen((list) {
+      if (listEquals(list, state.invoices)) return;
+      emit(state.copyWith(invoices: list));
+    }));
+    _subs.add(_repository.watchAdjustments().listen((list) {
+      if (listEquals(list, state.adjustments)) return;
+      emit(state.copyWith(adjustments: list));
+    }));
     _watchCounts(_countDate);
   }
 
   void _watchCounts(String date) {
     _countsSub?.cancel();
-    _countsSub = _repository.watchCounts(date).listen(
-          (list) => emit(state.copyWith(todayCounts: list, countDate: date)),
-        );
+    _countsSub = _repository.watchCounts(date).listen((list) {
+      if (date == state.countDate && listEquals(list, state.todayCounts)) return;
+      emit(state.copyWith(todayCounts: list, countDate: date));
+    });
   }
 
   /// يتأكد أن تاريخ الجرد المعروض هو تاريخ اليوم (إن بقي التطبيق مفتوحًا

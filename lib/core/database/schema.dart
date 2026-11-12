@@ -4,7 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class AppSchema {
   AppSchema._();
 
-  static const int version = 6;
+  static const int version = 7;
 
   static const List<String> createStatements = [
     '''
@@ -148,6 +148,19 @@ class AppSchema {
     ..._stockStatements,
     'CREATE INDEX IF NOT EXISTS idx_stock_purchases_invoice '
         'ON stock_purchases(invoice_id)',
+    ..._performanceIndexes,
+  ];
+
+  /// فهارس الأداء (الإصدار 7). أهمها `item_lines(menu_item_id)`: حساب كمية
+  /// المخزون يجمع مبيعات كل صنف، وبدون هذا الفهرس يمسح كل جدول item_lines
+  /// لكل صنف في كل تحديث.
+  static const List<String> _performanceIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_item_lines_menu_item '
+        'ON item_lines(menu_item_id)',
+    'CREATE INDEX IF NOT EXISTS idx_stock_moves_purchase '
+        'ON stock_moves(purchase_id)',
+    'CREATE INDEX IF NOT EXISTS idx_stock_moves_count '
+        'ON stock_moves(count_id)',
   ];
 
   /// جداول المخزون (الإصدار 5). تُستخدم عند الإنشاء وعند الترقية معًا، ولذلك
@@ -265,6 +278,13 @@ class AppSchema {
     if (oldVersion < 4) await _upgradeTo4(db);
     if (oldVersion < 5) await _upgradeTo5(db);
     if (oldVersion < 6) await _upgradeTo6(db);
+    if (oldVersion < 7) await _upgradeTo7(db);
+  }
+
+  static Future<void> _upgradeTo7(Database db) async {
+    for (final statement in _performanceIndexes) {
+      await db.execute(statement);
+    }
   }
 
   static Future<Set<Object?>> _columns(Database db, String table) async {

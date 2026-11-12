@@ -272,6 +272,21 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
 
   @override
   Future<List<PlayLine>> endExpiredFixedLines() async {
+    // يُستدعى كل 5 ثوانٍ. الكتابة عبر _db.write تُرسل إشعار "تغيّرت القاعدة"
+    // لكل الشاشات (فتُعيد كل واحدة تحميل بياناتها). لذلك نفحص بقراءة فقط أولًا،
+    // ولا نكتب إلا إن انتهى وقت محدد فعلًا.
+    final pending = await _db.raw.rawQuery(
+      'SELECT started_at, planned_minutes FROM play_lines '
+      'WHERE ended_at IS NULL AND planned_minutes IS NOT NULL',
+    );
+    final nowCheck = DateTime.now();
+    final anyExpired = pending.any((r) {
+      final end = parseDbTime(r['started_at'])
+          .add(Duration(minutes: r['planned_minutes'] as int));
+      return !nowCheck.isBefore(end);
+    });
+    if (!anyExpired) return const [];
+
     final endedIds = await _db.write((txn) async {
       final now = DateTime.now();
       final rows = await txn.rawQuery(

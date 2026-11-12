@@ -87,9 +87,49 @@ class _StockTab extends StatelessWidget {
     }
 
     final attention = state.attention;
-    return ListView(
+
+    // قائمة مسطّحة: [الملخص] ثم لكل تصنيف (ترويسة + أصنافه). ListView.builder
+    // يبني العناصر الظاهرة فقط، فلا يتأثر الأداء بعدد الأصناف.
+    final entries = <Object>['summary'];
+    for (final c in MenuCategory.values) {
+      final inCat = state.rows.where((r) => r.category == c).toList();
+      if (inCat.isEmpty) continue;
+      entries.add(_CategoryHeader(c, inCat.length));
+      entries.addAll(inCat);
+    }
+
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(
           Dimensions.spaceL, Dimensions.spaceM, Dimensions.spaceL, Dimensions.spaceL),
+      itemCount: entries.length,
+      itemBuilder: (context, i) {
+        final e = entries[i];
+        if (e is _CategoryHeader) {
+          return Padding(
+            padding: const EdgeInsets.only(top: Dimensions.spaceM, bottom: Dimensions.spaceS),
+            child: Row(
+              children: [
+                Icon(e.category.icon, size: 20, color: AppColors.accent),
+                const SizedBox(width: 8),
+                Text('${e.category.label} (${e.count})', style: AppTextStyles.heading3()),
+              ],
+            ),
+          );
+        }
+        if (e is StockRow) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
+            child: _StockRowCard(row: e),
+          );
+        }
+        return _summary(state, attention);
+      },
+    );
+  }
+
+  Widget _summary(InventoryState state, List<StockRow> attention) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Wrap(
           spacing: Dimensions.spaceS,
@@ -134,32 +174,15 @@ class _StockTab extends StatelessWidget {
             ),
           ),
         ],
-        for (final c in MenuCategory.values)
-          ..._section(context, c, state.rows.where((r) => r.category == c).toList()),
       ],
     );
   }
+}
 
-  List<Widget> _section(BuildContext context, MenuCategory c, List<StockRow> rows) {
-    if (rows.isEmpty) return const [];
-    return [
-      Padding(
-        padding: const EdgeInsets.only(top: Dimensions.spaceM, bottom: Dimensions.spaceS),
-        child: Row(
-          children: [
-            Icon(c.icon, size: 20, color: AppColors.accent),
-            const SizedBox(width: 8),
-            Text('${c.label} (${rows.length})', style: AppTextStyles.heading3()),
-          ],
-        ),
-      ),
-      for (final r in rows)
-        Padding(
-          padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
-          child: _StockRowCard(row: r),
-        ),
-    ];
-  }
+class _CategoryHeader {
+  final MenuCategory category;
+  final int count;
+  const _CategoryHeader(this.category, this.count);
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -336,16 +359,14 @@ class _PurchasesTab extends StatelessWidget {
                   message:
                       'سجّل كل شراء كفاتورة، وضمنها عدة أصناف بالطرد أو بالقطعة، وحدّد إن كانت مدفوعة أو بقي عليها مبلغ. يزيد المخزون وتُحسب تكلفة القطعة تلقائيًا.',
                 )
-              : ListView(
+              : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(
                       Dimensions.spaceL, 0, Dimensions.spaceL, Dimensions.spaceL),
-                  children: [
-                    for (final inv in state.invoices)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
-                        child: _InvoiceCard(invoice: inv),
-                      ),
-                  ],
+                  itemCount: state.invoices.length,
+                  itemBuilder: (context, i) => Padding(
+                    padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
+                    child: _InvoiceCard(invoice: state.invoices[i]),
+                  ),
                 ),
         ),
       ],
@@ -501,7 +522,9 @@ class _CountTabState extends State<_CountTab> {
             message: 'فعّل تتبّع المخزون لصنف واحد على الأقل من تبويب "المخزون".',
           );
         }
-        final done = rows.where((r) => state.countFor(r.itemId) != null).length;
+        // فهرس واحد لجرد اليوم (بدل البحث الخطي لكل صنف أثناء البناء).
+        final counts = {for (final c in state.todayCounts) c.itemId: c};
+        final done = rows.where((r) => counts.containsKey(r.itemId)).length;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -541,16 +564,14 @@ class _CountTabState extends State<_CountTab> {
             ),
             const SizedBox(height: Dimensions.spaceS),
             Expanded(
-              child: ListView(
+              child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(
                     Dimensions.spaceL, 0, Dimensions.spaceL, Dimensions.spaceL),
-                children: [
-                  for (final row in rows)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
-                      child: _countRow(row, state),
-                    ),
-                ],
+                itemCount: rows.length,
+                itemBuilder: (context, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
+                  child: _countRow(rows[i], state, counts[rows[i].itemId]),
+                ),
               ),
             ),
           ],
@@ -559,26 +580,40 @@ class _CountTabState extends State<_CountTab> {
     );
   }
 
-  Widget _countRow(StockRow row, InventoryState state) {
-    final controller = _controllerFor(row, state);
-    final saved = state.countFor(row.itemId);
-    final expected = saved?.expected ?? row.onHand;
-    final typed = parseIntField(controller.text);
-    final diff = typed == null ? null : typed - expected;
+  /// شارة الفرق: تُحدَّث وحدها عند الكتابة (ValueListenableBuilder) دون إعادة
+  /// بناء الصفحة كلها.
+  Widget _diffBadge(TextEditingController controller, int expected) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final typed = parseIntField(value.text);
+        if (typed == null) return const SizedBox.shrink();
+        final diff = typed - expected;
+        final badge = diff == 0
+            ? StatusBadge(
+                label: 'مطابق',
+                color: AppColors.success,
+                icon: Icons.check_circle_outline_rounded)
+            : diff < 0
+                ? StatusBadge(
+                    label: 'نقص ${-diff}',
+                    color: AppColors.danger,
+                    icon: Icons.trending_down_rounded)
+                : StatusBadge(
+                    label: 'زيادة $diff',
+                    color: AppColors.warning,
+                    icon: Icons.trending_up_rounded);
+        return Padding(
+          padding: const EdgeInsetsDirectional.only(end: Dimensions.spaceS),
+          child: badge,
+        );
+      },
+    );
+  }
 
-    Widget? diffBadge;
-    if (diff != null) {
-      if (diff == 0) {
-        diffBadge = StatusBadge(
-            label: 'مطابق', color: AppColors.success, icon: Icons.check_circle_outline_rounded);
-      } else if (diff < 0) {
-        diffBadge = StatusBadge(
-            label: 'نقص ${-diff}', color: AppColors.danger, icon: Icons.trending_down_rounded);
-      } else {
-        diffBadge = StatusBadge(
-            label: 'زيادة $diff', color: AppColors.warning, icon: Icons.trending_up_rounded);
-      }
-    }
+  Widget _countRow(StockRow row, InventoryState state, CountRecord? saved) {
+    final controller = _controllerFor(row, state);
+    final expected = saved?.expected ?? row.onHand;
 
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: Dimensions.spaceM, vertical: 8),
@@ -600,10 +635,7 @@ class _CountTabState extends State<_CountTab> {
               ],
             ),
           ),
-          if (diffBadge != null) ...[
-            diffBadge,
-            const SizedBox(width: Dimensions.spaceS),
-          ],
+          _diffBadge(controller, expected),
           SizedBox(
             width: 110,
             child: TextField(
@@ -613,7 +645,6 @@ class _CountTabState extends State<_CountTab> {
               textAlign: TextAlign.center,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9٠-٩]'))],
-              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(labelText: 'الفعلي', isDense: true),
             ),
           ),
@@ -716,11 +747,12 @@ class _AdjustmentsTab extends StatelessWidget {
         message: 'عند تعديل كمية صنف يدويًا من تبويب "المخزون" يُسجَّل التعديل وسببه هنا.',
       );
     }
-    return ListView(
+    return ListView.builder(
       padding: const EdgeInsets.all(Dimensions.spaceL),
-      children: [
-        for (final a in list)
-          Padding(
+      itemCount: list.length,
+      itemBuilder: (context, i) {
+        final a = list[i];
+        return Padding(
             padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
             child: AppCard(
               padding: const EdgeInsets.symmetric(horizontal: Dimensions.spaceM, vertical: 10),
@@ -746,8 +778,8 @@ class _AdjustmentsTab extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-      ],
+          );
+      },
     );
   }
 }

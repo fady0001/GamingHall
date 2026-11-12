@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../../../../core/domain/value_objects/money.dart';
 import '../../../menu/domain/entities/menu_category.dart';
 
@@ -52,6 +54,13 @@ class StockRow {
 
   /// قيمة ما في المخزون بسعر التكلفة (لا تُحسب الكميات السالبة).
   Money get stockValue => Money(onHand > 0 ? unitCost.amount * onHand : 0);
+
+  @override
+  bool operator ==(Object other) =>
+      other is StockRow && other.itemId == itemId && other.name == name && other.category == category && other.trackStock == trackStock && other.isSellable == isSellable && other.price == price && other.minStock == minStock && other.unitCost == unitCost && other.started == started && other.onHand == onHand;
+
+  @override
+  int get hashCode => Object.hash(itemId, name, category, trackStock, isSellable, price, minStock, unitCost, started, onHand);
 }
 
 /// تكلفة القطعة من سعر الطرد (تقريب لأقرب ليرة بحساب صحيح فقط).
@@ -217,6 +226,13 @@ class PurchaseLine {
           quantity: totalPieces,
           price: totalCost,
         );
+
+  @override
+  bool operator ==(Object other) =>
+      other is PurchaseLine && other.id == id && other.itemId == itemId && other.itemName == itemName && other.entryMode == entryMode && other.packs == packs && other.piecesPerPack == piecesPerPack && other.packPrice == packPrice && other.totalPieces == totalPieces && other.unitCost == unitCost && other.totalCost == totalCost;
+
+  @override
+  int get hashCode => Object.hash(id, itemId, itemName, entryMode, packs, piecesPerPack, packPrice, totalPieces, unitCost, totalCost);
 }
 
 class PurchasePayment {
@@ -233,6 +249,13 @@ class PurchasePayment {
     required this.paidAt,
     this.note,
   });
+
+  @override
+  bool operator ==(Object other) =>
+      other is PurchasePayment && other.id == id && other.invoiceId == invoiceId && other.amount == amount && other.paidAt == paidAt && other.note == note;
+
+  @override
+  int get hashCode => Object.hash(id, invoiceId, amount, paidAt, note);
 }
 
 enum PaymentStatus { paid, partial, unpaid }
@@ -271,6 +294,13 @@ class PurchaseInvoice {
     if (paid.amount <= 0) return PaymentStatus.unpaid;
     return PaymentStatus.partial;
   }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PurchaseInvoice && other.id == id && other.purchasedAt == purchasedAt && other.supplier == supplier && other.invoiceNo == invoiceNo && other.note == note && other.discount == discount && listEquals(other.lines, lines) && listEquals(other.payments, payments);
+
+  @override
+  int get hashCode => Object.hash(id, purchasedAt, supplier, invoiceNo, note, discount, lines, payments);
 }
 
 /// ما يرسله المدير لإنشاء/تعديل فاتورة.
@@ -330,6 +360,13 @@ class StockAdjustment {
     required this.reason,
     required this.createdAt,
   });
+
+  @override
+  bool operator ==(Object other) =>
+      other is StockAdjustment && other.id == id && other.itemId == itemId && other.itemName == itemName && other.qty == qty && other.reason == reason && other.createdAt == createdAt;
+
+  @override
+  int get hashCode => Object.hash(id, itemId, itemName, qty, reason, createdAt);
 }
 
 // ───────────────────────── الجرد ─────────────────────────
@@ -363,4 +400,11 @@ class CountRecord {
 
   /// الفرق = الفعلي − المتوقع. سالب = نقص، موجب = زيادة.
   int get difference => counted - expected;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CountRecord && other.id == id && other.itemId == itemId && other.itemName == itemName && other.date == date && other.expected == expected && other.counted == counted && other.countedAt == countedAt;
+
+  @override
+  int get hashCode => Object.hash(id, itemId, itemName, date, expected, counted, countedAt);
 }

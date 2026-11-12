@@ -74,15 +74,31 @@ class AppDatabase {
   Stream<T> watch<T>(Future<T> Function() load) {
     late final StreamController<T> controller;
     StreamSubscription<void>? subscription;
-    var sequence = 0;
+
+    // تحميل واحد في وقت واحد. إن تغيّرت القاعدة أثناء تحميل جارٍ نعلّم أن
+    // هناك تغييرًا ونعيد التحميل مرة واحدة فقط بعد انتهائه (بدل إطلاق عدة
+    // استعلامات متوازية تتراكم على قاعدة واحدة فتبطّئ التطبيق كله).
+    var running = false;
+    var dirty = false;
 
     Future<void> emitCurrent() async {
-      final mine = ++sequence;
+      if (running) {
+        dirty = true;
+        return;
+      }
+      running = true;
       try {
-        final value = await load();
-        if (!controller.isClosed && mine == sequence) controller.add(value);
-      } catch (e, s) {
-        if (!controller.isClosed) controller.addError(e, s);
+        do {
+          dirty = false;
+          try {
+            final value = await load();
+            if (!controller.isClosed) controller.add(value);
+          } catch (e, s) {
+            if (!controller.isClosed) controller.addError(e, s);
+          }
+        } while (dirty && !controller.isClosed);
+      } finally {
+        running = false;
       }
     }
 
