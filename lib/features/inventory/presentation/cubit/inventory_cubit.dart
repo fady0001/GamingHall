@@ -150,13 +150,10 @@ class InventoryCubit extends Cubit<InventoryState> {
 
   Future<void> adjustStock({
     required int itemId,
-    required StockAdjustMode mode,
-    required int quantity,
-    required String reason,
+    required int delta,
   }) {
     _requireManager();
-    return _repository.adjustStock(
-        itemId: itemId, mode: mode, quantity: quantity, reason: reason);
+    return _repository.adjustStock(itemId: itemId, delta: delta);
   }
 
   Future<int> createStockItem({

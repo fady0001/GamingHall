@@ -8,8 +8,9 @@ import '../../../../core/widgets/app_dialog.dart';
 import '../../../../core/widgets/friendly_error.dart';
 import '../../domain/entities/inventory_models.dart';
 import '../cubit/inventory_cubit.dart';
-import 'fields.dart';
 
+/// تعديل الكمية يدويًا: زرّ + وزرّ − حول الكمية الفعلية ثم «حفظ».
+/// يرجع true إن تم الحفظ.
 Future<bool> showStockAdjustDialog(BuildContext context, StockRow row) async {
   final ok = await showDialog<bool>(
     context: context,
@@ -27,57 +28,32 @@ class _StockAdjustDialog extends StatefulWidget {
 }
 
 class _StockAdjustDialogState extends State<_StockAdjustDialog> {
-  static const _reasons = ['تلف', 'هدية', 'خطأ إدخال', 'استهلاك داخلي', 'ضياع'];
-
-  final _qty = TextEditingController();
-  final _reason = TextEditingController();
-  StockAdjustMode _mode = StockAdjustMode.increase;
-  String? _qtyError;
-  String? _reasonError;
+  /// الكمية المعروضة (تبدأ بالكمية الفعلية وتتغيّر بالـ + والـ −).
+  late int _value;
   String? _error;
   bool _busy = false;
 
   @override
-  void dispose() {
-    _qty.dispose();
-    _reason.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _value = widget.row.onHand;
   }
 
-  /// الكمية بعد التعديل (للمعاينة)، أو null إن لم يُدخل رقم صالح.
-  int? get _result {
-    final q = parseIntField(_qty.text);
-    if (q == null) return null;
-    final now = widget.row.onHand;
-    switch (_mode) {
-      case StockAdjustMode.increase:
-        return now + q;
-      case StockAdjustMode.decrease:
-        return now - q;
-      case StockAdjustMode.setTo:
-        return q;
-    }
-  }
+  /// الفرق عن الكمية الفعلية: هو ما يُحفظ (لا الرقم النهائي)، فلو تغيّرت
+  /// الكمية من فاتورة أثناء فتح النافذة يُطبَّق الفرق على الرقم الحالي.
+  int get _delta => _value - widget.row.onHand;
 
-  Future<void> _submit() async {
-    final q = parseIntField(_qty.text);
-    final reason = _reason.text.trim();
+  Future<void> _save() async {
+    final delta = _delta;
+    if (delta == 0) return;
     setState(() {
+      _busy = true;
       _error = null;
-      _qtyError = q == null
-          ? 'أدخل الكمية'
-          : (_mode != StockAdjustMode.setTo && q == 0 ? 'أدخل عددًا أكبر من صفر' : null);
-      _reasonError = reason.isEmpty ? 'اكتب سبب التعديل أو اختر واحدًا' : null;
     });
-    if (_qtyError != null || _reasonError != null) return;
-
-    setState(() => _busy = true);
     try {
       await context.read<InventoryCubit>().adjustStock(
             itemId: widget.row.itemId,
-            mode: _mode,
-            quantity: q!,
-            reason: reason,
+            delta: delta,
           );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -90,27 +66,58 @@ class _StockAdjustDialogState extends State<_StockAdjustDialog> {
     }
   }
 
+  Widget _stepButton(IconData icon, String tooltip, VoidCallback? onTap) {
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: IconButton(
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+        style: IconButton.styleFrom(
+          backgroundColor: AppColors.surfaceHighest,
+          disabledBackgroundColor: AppColors.surfaceHigh,
+        ),
+        onPressed: onTap,
+        icon: Icon(icon, size: 30),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final result = _result;
+    final delta = _delta;
+    final String deltaText;
+    final Color deltaColor;
+    if (delta == 0) {
+      deltaText = 'لم تتغيّر الكمية';
+      deltaColor = AppColors.textMuted;
+    } else if (delta > 0) {
+      deltaText = 'زيادة $delta قطعة';
+      deltaColor = AppColors.secondary;
+    } else {
+      deltaText = 'نقص ${-delta} قطعة';
+      deltaColor = AppColors.danger;
+    }
+
     return AppDialog(
       title: 'تعديل مخزون: ${row.name}',
       icon: Icons.edit_note_rounded,
       iconColor: AppColors.accent,
-      width: 480,
+      width: 420,
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
           child: const Text('إلغاء'),
         ),
         FilledButton.icon(
-          onPressed: _busy ? null : _submit,
+          onPressed: (_busy || delta == 0) ? null : _save,
           icon: const Icon(Icons.check_rounded),
-          label: const Text('حفظ التعديل'),
+          label: const Text('حفظ'),
         ),
       ],
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
@@ -120,70 +127,43 @@ class _StockAdjustDialogState extends State<_StockAdjustDialog> {
             style: AppTextStyles.bodyMedium(AppColors.textSecondary),
           ),
           const SizedBox(height: Dimensions.spaceM),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ChoiceChip(
-                avatar: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('زيادة'),
-                selected: _mode == StockAdjustMode.increase,
-                onSelected: _busy ? null : (_) => setState(() => _mode = StockAdjustMode.increase),
+              _stepButton(
+                Icons.add_rounded,
+                'زيادة قطعة',
+                _busy ? null : () => setState(() => _value++),
               ),
-              ChoiceChip(
-                avatar: const Icon(Icons.remove_rounded, size: 18),
-                label: const Text('نقص'),
-                selected: _mode == StockAdjustMode.decrease,
-                onSelected: _busy ? null : (_) => setState(() => _mode = StockAdjustMode.decrease),
-              ),
-              ChoiceChip(
-                avatar: const Icon(Icons.edit_rounded, size: 18),
-                label: const Text('ضبط على رقم'),
-                selected: _mode == StockAdjustMode.setTo,
-                onSelected: _busy ? null : (_) => setState(() => _mode = StockAdjustMode.setTo),
-              ),
-            ],
-          ),
-          const SizedBox(height: Dimensions.spaceM),
-          IntField(
-            controller: _qty,
-            label: _mode == StockAdjustMode.setTo ? 'الكمية الجديدة' : 'العدد (قطع)',
-            icon: Icons.numbers_rounded,
-            errorText: _qtyError,
-            enabled: !_busy,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            result == null ? 'الكمية بعد التعديل: —' : 'الكمية بعد التعديل: $result قطعة',
-            style: AppTextStyles.bodyMedium(
-                (result != null && result < 0) ? AppColors.danger : AppColors.secondary),
-          ),
-          const SizedBox(height: Dimensions.spaceM),
-          Text('السبب (إلزامي)', style: AppTextStyles.label()),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final r in _reasons)
-                ActionChip(
-                  label: Text(r),
-                  onPressed: _busy ? null : () => setState(() => _reason.text = r),
+              SizedBox(
+                width: 120,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '$_value',
+                        style: AppTextStyles.price(
+                            _value <= 0 ? AppColors.danger : AppColors.secondary, 32),
+                      ),
+                    ),
+                    Text('قطعة', style: AppTextStyles.bodySmall(AppColors.textMuted)),
+                  ],
                 ),
+              ),
+              _stepButton(
+                Icons.remove_rounded,
+                'إنقاص قطعة',
+                (_busy || _value <= 0) ? null : () => setState(() => _value--),
+              ),
             ],
           ),
           const SizedBox(height: Dimensions.spaceS),
-          TextField(
-            controller: _reason,
-            enabled: !_busy,
-            maxLength: 80,
-            decoration: InputDecoration(
-              labelText: 'السبب',
-              prefixIcon: const Icon(Icons.notes_rounded),
-              errorText: _reasonError,
-              counterText: '',
-            ),
+          Text(
+            deltaText,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.bodyMedium(deltaColor),
           ),
           if (_error != null) ...[
             const SizedBox(height: Dimensions.spaceM),

@@ -331,17 +331,6 @@ class PurchaseInvoiceInput {
 
 // ───────────────────────── التعديل اليدوي ─────────────────────────
 
-enum StockAdjustMode {
-  /// زيادة بعدد.
-  increase,
-
-  /// نقص بعدد.
-  decrease,
-
-  /// ضبط الكمية على رقم محدد.
-  setTo,
-}
-
 class StockAdjustment {
   final int id;
   final int itemId;

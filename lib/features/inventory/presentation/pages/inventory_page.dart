@@ -744,7 +744,7 @@ class _AdjustmentsTab extends StatelessWidget {
       return const EmptyState(
         icon: Icons.history_rounded,
         title: 'لا توجد تعديلات يدوية',
-        message: 'عند تعديل كمية صنف يدويًا من تبويب "المخزون" يُسجَّل التعديل وسببه هنا.',
+        message: 'عند تعديل كمية صنف يدويًا من تبويب "المخزون" يُسجَّل التعديل هنا.',
       );
     }
     return ListView.builder(
@@ -763,8 +763,9 @@ class _AdjustmentsTab extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(a.itemName, style: AppTextStyles.bodyLarge()),
-                        Text(a.reason,
-                            style: AppTextStyles.bodyMedium(AppColors.textSecondary)),
+                        if (a.reason.isNotEmpty)
+                          Text(a.reason,
+                              style: AppTextStyles.bodyMedium(AppColors.textSecondary)),
                         Text(formatDateTime(a.createdAt),
                             style: AppTextStyles.bodySmall(AppColors.textMuted)),
                       ],

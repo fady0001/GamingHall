@@ -316,47 +316,25 @@ void main() {
   group('التعديل اليدوي', () {
     setUp(() async => buy([packLine(pepsi.id, 1, 24, 48000)]));
 
-    test('زيادة ونقص وضبط على رقم، مع تسجيل السبب', () async {
-      await inventory.adjustStock(
-        itemId: pepsi.id,
-        mode: StockAdjustMode.decrease,
-        quantity: 4,
-        reason: 'تلف',
-      );
+    test('زيادة ونقص بالفرق بدون سبب، وتُسجَّل في السجل', () async {
+      await inventory.adjustStock(itemId: pepsi.id, delta: -4);
       expect((await row(pepsi.id)).onHand, 20);
 
-      await inventory.adjustStock(
-        itemId: pepsi.id,
-        mode: StockAdjustMode.increase,
-        quantity: 3,
-        reason: 'هدية',
-      );
-      expect((await row(pepsi.id)).onHand, 23);
-
-      await inventory.adjustStock(
-        itemId: pepsi.id,
-        mode: StockAdjustMode.setTo,
-        quantity: 30,
-        reason: 'خطأ إدخال',
-      );
-      expect((await row(pepsi.id)).onHand, 30);
+      await inventory.adjustStock(itemId: pepsi.id, delta: 7);
+      expect((await row(pepsi.id)).onHand, 27);
 
       final log = await inventory.watchAdjustments().first;
-      expect(log.length, 3);
-      expect(log.first.qty, 7); // الأحدث أولًا: 23 → 30
-      expect(log.first.reason, 'خطأ إدخال');
+      expect(log.length, 2);
+      expect(log.first.qty, 7); // الأحدث أولًا
+      expect(log.first.reason, '');
     });
 
-    test('السبب إلزامي', () async {
+    test('فرق صفر مرفوض', () async {
       expect(
-        () => inventory.adjustStock(
-          itemId: pepsi.id,
-          mode: StockAdjustMode.increase,
-          quantity: 1,
-          reason: '  ',
-        ),
-        throwsA(isA<ArgumentError>()),
+        () => inventory.adjustStock(itemId: pepsi.id, delta: 0),
+        throwsA(isA<StateError>()),
       );
+      expect((await row(pepsi.id)).onHand, 24);
     });
   });
 

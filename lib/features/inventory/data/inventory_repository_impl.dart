@@ -384,18 +384,10 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<void> adjustStock({
     required int itemId,
-    required StockAdjustMode mode,
-    required int quantity,
-    required String reason,
+    required int delta,
   }) async {
-    final why = reason.trim();
-    if (why.isEmpty) throw ArgumentError('اكتب سبب التعديل');
-    if (quantity < 0 || quantity > 1000000) {
-      throw ArgumentError('الكمية غير صالحة');
-    }
-    if (mode != StockAdjustMode.setTo && quantity == 0) {
-      throw ArgumentError('أدخل عددًا أكبر من صفر');
-    }
+    if (delta.abs() > 1000000) throw ArgumentError('الكمية غير صالحة');
+    if (delta == 0) throw StateError('الكمية لم تتغيّر');
 
     await _db.write((txn) async {
       final item = await txn.query('menu_items',
@@ -406,23 +398,12 @@ class InventoryRepositoryImpl implements InventoryRepository {
       if (item.isEmpty) throw StateError('الصنف غير موجود');
 
       await _ensureStarted(txn, itemId);
-      final current = await _onHand(txn, itemId);
-      final int delta;
-      switch (mode) {
-        case StockAdjustMode.increase:
-          delta = quantity;
-        case StockAdjustMode.decrease:
-          delta = -quantity;
-        case StockAdjustMode.setTo:
-          delta = quantity - current;
-      }
-      if (delta == 0) throw StateError('الكمية لم تتغيّر');
 
       await txn.insert('stock_moves', {
         'menu_item_id': itemId,
         'kind': 'manual',
         'qty': delta,
-        'reason': why,
+        'reason': null,
         'created_at': dbTime(DateTime.now()),
       });
     });

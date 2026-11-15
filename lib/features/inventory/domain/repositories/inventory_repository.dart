@@ -32,12 +32,10 @@ abstract class InventoryRepository {
 
   Future<void> deletePayment(int paymentId);
 
-  /// تعديل يدوي للكمية (زيادة / نقص / ضبط على رقم) مع سبب إلزامي.
+  /// تعديل يدوي للكمية الفعلية: [delta] موجب = زيادة، سالب = نقص (بدون سبب).
   Future<void> adjustStock({
     required int itemId,
-    required StockAdjustMode mode,
-    required int quantity,
-    required String reason,
+    required int delta,
   });
 
   /// صنف جديد من شاشة الشراء: لا يُباع (لا يظهر في قائمة المشتريات).
