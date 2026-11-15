@@ -12,8 +12,10 @@ import '../../../../core/widgets/date_range_dialog.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/page_header.dart';
 import '../../../../core/widgets/section_title.dart';
+import '../../../../core/widgets/snackbars.dart';
 import '../../domain/entities/report.dart';
 import '../cubit/reports_cubit.dart';
+import '../widgets/monthly_report_dialog.dart';
 import '../widgets/stat_widgets.dart';
 
 /// التقارير والإحصائيات (للمدير فقط).
@@ -60,11 +62,18 @@ class _ReportsPageState extends State<ReportsPage> {
     context.read<ReportsCubit>().load(preset: RangePreset.custom, custom: range);
   }
 
+  Future<void> _monthlyReport() async {
+    final path = await showMonthlyReportDialog(context);
+    if (path == null || !mounted) return;
+    showAppSnack(context, 'تم حفظ التقرير: $path');
+  }
+
   String _rangeLabel(Report r) {
     final lastDay = r.range.end.subtract(const Duration(milliseconds: 1));
     final a = formatDate(r.range.start);
     final b = formatDate(lastDay);
-    return a == b ? a : '$a  →  $b';
+    // البداية على اليمين والنهاية على اليسار (واجهة عربية): السهم نحو اليسار.
+    return a == b ? a : '$a  ←  $b';
   }
 
   @override
@@ -79,6 +88,11 @@ class _ReportsPageState extends State<ReportsPage> {
           title: 'التقارير والإحصائيات',
           subtitle: report == null ? null : 'الفترة: ${_rangeLabel(report)}  •  الأرقام من الفواتير المغلقة فقط',
           actions: [
+            OutlinedButton.icon(
+              onPressed: _monthlyReport,
+              icon: const Icon(Icons.picture_as_pdf_rounded),
+              label: const Text('تقرير شهري PDF'),
+            ),
             IconButton.outlined(
               tooltip: 'تحديث',
               onPressed: () => context.read<ReportsCubit>().load(),

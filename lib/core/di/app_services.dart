@@ -14,7 +14,9 @@ import '../../features/invoices/data/invoice_repository_impl.dart';
 import '../../features/invoices/domain/repositories/invoice_repository.dart';
 import '../../features/menu/data/menu_repository_impl.dart';
 import '../../features/menu/domain/repositories/menu_repository.dart';
+import '../../features/reports/data/monthly_report_repository_impl.dart';
 import '../../features/reports/data/report_repository_impl.dart';
+import '../../features/reports/domain/repositories/monthly_report_repository.dart';
 import '../../features/reports/domain/repositories/report_repository.dart';
 import '../../features/resources/data/resource_repository_impl.dart';
 import '../../features/resources/domain/repositories/resource_repository.dart';
@@ -35,6 +37,7 @@ class AppServices {
   final InvoiceRepository invoices;
   final BookingRepository bookings;
   final ReportRepository reports;
+  final MonthlyReportRepository monthlyReports;
   final BackupService backup;
 
   AppServices._({
@@ -49,6 +52,7 @@ class AppServices {
     required this.invoices,
     required this.bookings,
     required this.reports,
+    required this.monthlyReports,
     required this.backup,
   });
 
@@ -66,6 +70,7 @@ class AppServices {
       invoices: InvoiceRepositoryImpl(db),
       bookings: BookingRepositoryImpl(db),
       reports: ReportRepositoryImpl(db),
+      monthlyReports: MonthlyReportRepositoryImpl(db),
       backup: BackupService(db),
     );
   }

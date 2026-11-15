@@ -132,7 +132,8 @@ class _DateRangeDialogState extends State<_DateRangeDialog> {
     if (e == null) return '${formatDate(s)}  (اختر يوم النهاية أو اضغط تطبيق ليوم واحد)';
     if (e == s) return formatDate(s);
     final days = e.difference(s).inDays + 1;
-    return '${formatDate(s)}  →  ${formatDate(e)}  •  $days يوم';
+    // الواجهة عربية: البداية على اليمين والنهاية على اليسار، فالسهم نحو اليسار.
+    return '${formatDate(s)}  ←  ${formatDate(e)}  •  $days يوم';
   }
 
   @override

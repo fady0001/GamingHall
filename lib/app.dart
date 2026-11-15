@@ -28,6 +28,7 @@ import 'features/invoices/presentation/cubit/invoices_cubit.dart';
 import 'features/inventory/presentation/cubit/inventory_cubit.dart';
 import 'features/menu/presentation/cubit/menu_cubit.dart';
 import 'features/reminders/presentation/reminders_host.dart';
+import 'features/reports/domain/repositories/monthly_report_repository.dart';
 import 'features/reports/presentation/cubit/reports_cubit.dart';
 import 'features/resources/presentation/cubit/devices_board_cubit.dart';
 import 'features/resources/presentation/cubit/resources_cubit.dart';
@@ -128,6 +129,8 @@ class _Providers extends StatelessWidget {
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider<BackupService>.value(value: services.backup),
+        RepositoryProvider<MonthlyReportRepository>.value(
+            value: services.monthlyReports),
         RepositoryProvider<DemoDataService>(
           create: (_) => DemoDataService(services.database),
         ),
