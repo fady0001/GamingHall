@@ -180,6 +180,37 @@ void main() {
       );
     });
 
+    test('تغيير تاريخ الفاتورة ينقل دفعتها الأولى معها دون الدفعات اللاحقة',
+        () async {
+      final id = await buy(
+        [packLine(pepsi.id, 1, 24, 48000)],
+        paid: 20000,
+        at: DateTime(2026, 10, 30, 10),
+      );
+      await inventory.addPayment(
+        invoiceId: id,
+        amount: const Money(8000),
+        paidAt: DateTime(2026, 11, 3, 9),
+      );
+
+      // نقل الفاتورة إلى تشرين الثاني.
+      await inventory.saveInvoice(
+        PurchaseInvoiceInput(
+          id: id,
+          purchasedAt: DateTime(2026, 11, 1, 10),
+          lines: [packLine(pepsi.id, 1, 24, 48000)],
+        ),
+      );
+
+      final inv = (await inventory.watchPurchaseInvoices().first).single;
+      expect(inv.purchasedAt, DateTime(2026, 11, 1, 10));
+      expect(inv.payments.map((p) => p.paidAt), [
+        DateTime(2026, 11, 1, 10), // الدفعة الأولى انتقلت مع الفاتورة
+        DateTime(2026, 11, 3, 9), // اللاحقة كما هي
+      ]);
+      expect(inv.paid.amount, 28000);
+    });
+
     test('حذف الفاتورة يسحب قطعها من المخزون', () async {
       final id = await buy([packLine(pepsi.id, 1, 12, 24000)]);
       await inventory.deleteInvoice(id);

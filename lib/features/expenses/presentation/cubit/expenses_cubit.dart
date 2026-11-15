@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/domain/validation_exception.dart';
 import '../../../../core/domain/value_objects/money.dart';
+import '../../domain/entities/buffet_payment.dart';
 import '../../domain/entities/expense.dart';
 import '../../domain/repositories/expense_repository.dart';
 
@@ -13,6 +14,12 @@ class ExpensesState {
   final int year;
   final int month;
   final List<Expense> expenses;
+
+  /// دفعات مشتريات البوفيه في الشهر (للعرض فقط، تُحسب مع المصاريف).
+  final List<BuffetPayment> buffetPayments;
+
+  /// غير المسدَّد من فواتير المشتريات حتى نهاية الشهر المعروض.
+  final Money buffetUnpaid;
   final List<ExpenseLogEntry> log;
   final List<String> withdrawerNames;
 
@@ -23,6 +30,8 @@ class ExpensesState {
     required this.year,
     required this.month,
     this.expenses = const [],
+    this.buffetPayments = const [],
+    this.buffetUnpaid = Money.zero,
     this.log = const [],
     this.withdrawerNames = const [],
     this.isLoading = true,
@@ -40,12 +49,19 @@ class ExpensesState {
         expenses.where((e) => e.kind == kind).map((e) => e.amount),
       );
 
-  Money get total => sumMoney(expenses.map((e) => e.amount));
+  /// مجموع ما دُفع للمشتريات خلال الشهر.
+  Money get buffetTotal => sumMoney(buffetPayments.map((p) => p.amount));
+
+  /// إجمالي الشهر: كل المصاريف + مشتريات البوفيه.
+  Money get total =>
+      sumMoney(expenses.map((e) => e.amount)) + buffetTotal;
 
   ExpensesState copyWith({
     int? year,
     int? month,
     List<Expense>? expenses,
+    List<BuffetPayment>? buffetPayments,
+    Money? buffetUnpaid,
     List<ExpenseLogEntry>? log,
     List<String>? withdrawerNames,
     bool? isLoading,
@@ -54,6 +70,8 @@ class ExpensesState {
         year: year ?? this.year,
         month: month ?? this.month,
         expenses: expenses ?? this.expenses,
+        buffetPayments: buffetPayments ?? this.buffetPayments,
+        buffetUnpaid: buffetUnpaid ?? this.buffetUnpaid,
         log: log ?? this.log,
         withdrawerNames: withdrawerNames ?? this.withdrawerNames,
         isLoading: isLoading ?? this.isLoading,
@@ -67,6 +85,10 @@ class ExpensesCubit extends Cubit<ExpensesState> {
   final bool Function() _isManager;
   final List<StreamSubscription<dynamic>> _subs = [];
   StreamSubscription<List<Expense>>? _monthSub;
+  StreamSubscription<List<BuffetPayment>>? _buffetSub;
+  StreamSubscription<Money>? _unpaidSub;
+  bool _expensesLoaded = false;
+  bool _buffetLoaded = false;
 
   ExpensesCubit(this._repository, {bool Function()? isManager})
       : _isManager = isManager ?? (() => true),
@@ -87,11 +109,27 @@ class ExpensesCubit extends Cubit<ExpensesState> {
 
   void _watchMonth(int year, int month) {
     _monthSub?.cancel();
+    _buffetSub?.cancel();
+    _unpaidSub?.cancel();
+    _expensesLoaded = false;
+    _buffetLoaded = false;
     _monthSub = _repository.watchMonth(year, month).listen((list) {
       // نتجاهل بث شهر سابق وصل متأخرًا.
       if (year != state.year || month != state.month) return;
-      if (!state.isLoading && listEquals(list, state.expenses)) return;
-      emit(state.copyWith(expenses: list, isLoading: false));
+      if (_expensesLoaded && listEquals(list, state.expenses)) return;
+      _expensesLoaded = true;
+      emit(state.copyWith(expenses: list, isLoading: !_buffetLoaded));
+    });
+    _buffetSub = _repository.watchBuffetPayments(year, month).listen((list) {
+      if (year != state.year || month != state.month) return;
+      if (_buffetLoaded && listEquals(list, state.buffetPayments)) return;
+      _buffetLoaded = true;
+      emit(state.copyWith(buffetPayments: list, isLoading: !_expensesLoaded));
+    });
+    _unpaidSub = _repository.watchBuffetUnpaid(year, month).listen((value) {
+      if (year != state.year || month != state.month) return;
+      if (value == state.buffetUnpaid) return;
+      emit(state.copyWith(buffetUnpaid: value));
     });
   }
 
@@ -100,6 +138,8 @@ class ExpensesCubit extends Cubit<ExpensesState> {
       year: year,
       month: month,
       expenses: const [],
+      buffetPayments: const [],
+      buffetUnpaid: Money.zero,
       isLoading: true,
     ));
     _watchMonth(year, month);
@@ -146,6 +186,8 @@ class ExpensesCubit extends Cubit<ExpensesState> {
       s.cancel();
     }
     _monthSub?.cancel();
+    _buffetSub?.cancel();
+    _unpaidSub?.cancel();
     return super.close();
   }
 }

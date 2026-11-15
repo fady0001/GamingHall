@@ -16,6 +16,7 @@ import '../../../../core/widgets/friendly_error.dart';
 import '../../../../core/widgets/page_header.dart';
 import '../../../../core/widgets/snackbars.dart';
 import '../../../../core/widgets/status_badge.dart';
+import '../../domain/entities/buffet_payment.dart';
 import '../../domain/entities/expense.dart';
 import '../cubit/expenses_cubit.dart';
 import '../widgets/expense_form_dialog.dart';
@@ -35,6 +36,10 @@ Color _kindColor(ExpenseKind kind) {
   }
 }
 
+/// مشتريات البوفيه (عرض فقط): لونها وأيقونتها خاصان بها لتتميّز عن أنواع المصاريف.
+const Color _buffetColor = Color(0xFFFB923C);
+const IconData _buffetIcon = Icons.shopping_cart_rounded;
+
 /// أقصى عرض للمحتوى على الشاشات العريضة (حتى لا تتمدد البطاقات بلا فائدة).
 const double _maxContentWidth = 1200;
 
@@ -46,7 +51,8 @@ EdgeInsets _pagePadding(double width) {
 }
 
 /// المصاريف (للمدير فقط): مصاريف الصالة والمسحوبات والاحتياطي حسب الشهر،
-/// وسجل بمن غيّر ماذا ومتى. مشتريات البوفيه تأتي من فواتير المشتريات.
+/// وسجل بمن غيّر ماذا ومتى. مشتريات البوفيه تظهر بلا أزرار تعديل (تُدار من
+/// صفحة المخزون والجرد) وتُحسب مع المصاريف.
 class ExpensesPage extends StatelessWidget {
   const ExpensesPage({super.key});
 
@@ -61,7 +67,7 @@ class ExpensesPage extends StatelessWidget {
           const PageHeader(
             title: 'المصاريف',
             subtitle:
-                'مصاريف الصالة والمسحوبات والاحتياطي. مشتريات البوفيه تُحسب من فواتير المشتريات',
+                'مصاريف الصالة والمسحوبات والاحتياطي، مع مشتريات البوفيه المسدَّدة (تُدار من صفحة المخزون والجرد)',
           ),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: side),
@@ -100,6 +106,9 @@ class _ExpensesTab extends StatefulWidget {
 
 class _ExpensesTabState extends State<_ExpensesTab> {
   ExpenseKind? _filter;
+
+  /// عرض مشتريات البوفيه فقط (للعرض، بلا تعديل).
+  bool _buffetOnly = false;
 
   Future<void> _delete(Expense e) async {
     final confirmed = await showConfirmDialog(
@@ -169,14 +178,14 @@ class _ExpensesTabState extends State<_ExpensesTab> {
     );
   }
 
-  /// ملخّص الشهر: 6 بطاقات بعرض متساوٍ (6 / 3 / 2 / 1 أعمدة حسب العرض).
+  /// ملخّص الشهر: 7 بطاقات بعرض متساوٍ (7 / 4 / 2 / 1 أعمدة حسب العرض).
   Widget _summary(ExpensesState state) {
     return LayoutBuilder(
       builder: (context, c) {
         const gap = Dimensions.spaceS;
-        final cols = c.maxWidth >= 1000
-            ? 6
-            : (c.maxWidth >= 640 ? 3 : (c.maxWidth >= 380 ? 2 : 1));
+        final cols = c.maxWidth >= 1100
+            ? 7
+            : (c.maxWidth >= 640 ? 4 : (c.maxWidth >= 380 ? 2 : 1));
         // floor: تجنّب فرق كسري صغير يرمي آخر بطاقة لسطر جديد.
         final w = ((c.maxWidth - gap * (cols - 1)) / cols).floorToDouble();
         final cards = <Widget>[
@@ -187,13 +196,22 @@ class _ExpensesTabState extends State<_ExpensesTab> {
             color: AppColors.primaryLight,
             emphasized: true,
           ),
-          for (final k in ExpenseKind.values)
+          for (final k in ExpenseKind.values) ...[
             _SummaryCard(
               icon: k.icon,
               label: k.label,
               value: formatMoneyWithUnit(state.totalFor(k)),
               color: _kindColor(k),
             ),
+            // مشتريات البوفيه بعد مصاريف التشغيل (صيانة، رواتب، مستلزمات).
+            if (k == ExpenseKind.supplies)
+              _SummaryCard(
+                icon: _buffetIcon,
+                label: 'مشتريات البوفيه (المدفوع)',
+                value: formatMoneyWithUnit(state.buffetTotal),
+                color: _buffetColor,
+              ),
+          ],
         ];
         return Wrap(
           spacing: gap,
@@ -212,8 +230,11 @@ class _ExpensesTabState extends State<_ExpensesTab> {
         children: [
           ChoiceChip(
             label: const Text('الكل'),
-            selected: _filter == null,
-            onSelected: (_) => setState(() => _filter = null),
+            selected: _filter == null && !_buffetOnly,
+            onSelected: (_) => setState(() {
+              _filter = null;
+              _buffetOnly = false;
+            }),
           ),
           for (final k in ExpenseKind.values) ...[
             const SizedBox(width: Dimensions.spaceXS),
@@ -221,8 +242,23 @@ class _ExpensesTabState extends State<_ExpensesTab> {
               avatar: Icon(k.icon, size: 18),
               label: Text(k.label),
               selected: _filter == k,
-              onSelected: (_) => setState(() => _filter = k),
+              onSelected: (_) => setState(() {
+                _filter = k;
+                _buffetOnly = false;
+              }),
             ),
+            if (k == ExpenseKind.supplies) ...[
+              const SizedBox(width: Dimensions.spaceXS),
+              ChoiceChip(
+                avatar: const Icon(_buffetIcon, size: 18),
+                label: const Text('مشتريات البوفيه'),
+                selected: _buffetOnly,
+                onSelected: (_) => setState(() {
+                  _filter = null;
+                  _buffetOnly = true;
+                }),
+              ),
+            ],
           ],
         ],
       ),
@@ -232,9 +268,15 @@ class _ExpensesTabState extends State<_ExpensesTab> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ExpensesCubit>().state;
-    final shown = _filter == null
-        ? state.expenses
-        : state.expenses.where((e) => e.kind == _filter).toList();
+    // القائمة: المصاريف (حسب الفلتر) + دفعات مشتريات البوفيه (تظهر مع "الكل"
+    // ومع فلتر المشتريات فقط)، الأحدث أولًا.
+    final shown = <_Entry>[
+      if (!_buffetOnly)
+        for (final e in state.expenses)
+          if (_filter == null || e.kind == _filter) _Entry.expense(e),
+      if (_filter == null)
+        for (final p in state.buffetPayments) _Entry.payment(p),
+    ]..sort((a, b) => b.date.compareTo(a.date));
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -247,6 +289,10 @@ class _ExpensesTabState extends State<_ExpensesTab> {
           const SizedBox(height: Dimensions.spaceM),
           _filters(),
           const SizedBox(height: Dimensions.spaceM),
+          if (_buffetOnly && !state.isLoading && state.buffetUnpaid.amount > 0) ...[
+            _UnpaidNote(amount: state.buffetUnpaid),
+            const SizedBox(height: Dimensions.spaceS),
+          ],
         ];
 
         Widget body(int i) {
@@ -258,6 +304,14 @@ class _ExpensesTabState extends State<_ExpensesTab> {
             );
           }
           if (shown.isEmpty) {
+            if (_buffetOnly) {
+              return EmptyState(
+                icon: _buffetIcon,
+                title: 'لا توجد دفعات مشتريات في ${monthLabel(state.year, state.month)}',
+                message:
+                    'المشتريات تُسجَّل وتُسدَّد من صفحة المخزون والجرد، وتظهر هنا حسب تاريخ الدفع.',
+              );
+            }
             return EmptyState(
               icon: Icons.account_balance_wallet_rounded,
               title: 'لا توجد مصاريف في ${monthLabel(state.year, state.month)}',
@@ -266,14 +320,22 @@ class _ExpensesTabState extends State<_ExpensesTab> {
                   : 'لا توجد مصاريف من نوع "${_filter!.label}" في هذا الشهر.',
             );
           }
-          final e = shown[i - header.length];
+          final entry = shown[i - header.length];
+          final e = entry.expense;
           return Padding(
             padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
-            child: _ExpenseCard(
-              expense: e,
-              onEdit: () => showExpenseFormDialog(context, existing: e),
-              onDelete: () => _delete(e),
-            ),
+            child: e != null
+                ? _ExpenseCard(
+                    expense: e,
+                    onEdit: () => showExpenseFormDialog(context, existing: e),
+                    onDelete: () => _delete(e),
+                  )
+                : _BuffetPaymentCard(
+                    payment: entry.payment!,
+                    // مع "الكل" نترك مكان أزرار التعديل فارغًا ليصطف المبلغ مع
+                    // مبالغ المصاريف؛ وفي عرض المشتريات وحدها يلتصق المبلغ بالحافة.
+                    alignWithActions: !_buffetOnly,
+                  ),
           );
         }
 
@@ -286,6 +348,39 @@ class _ExpensesTabState extends State<_ExpensesTab> {
           itemBuilder: (context, i) => body(i),
         );
       },
+    );
+  }
+}
+
+/// سطر في القائمة: مصروف مسجَّل أو دفعة مشتريات بوفيه (عرض فقط).
+class _Entry {
+  final Expense? expense;
+  final BuffetPayment? payment;
+  const _Entry.expense(Expense this.expense) : payment = null;
+  const _Entry.payment(BuffetPayment this.payment) : expense = null;
+
+  DateTime get date => expense?.date ?? payment!.paidAt;
+}
+
+/// سطر معلومات في عرض مشتريات البوفيه: ما بقي غير مسدَّد للموردين حتى نهاية
+/// الشهر (لا يدخل في إجمالي الشهر لأنه لم يُدفع بعد).
+class _UnpaidNote extends StatelessWidget {
+  final Money amount;
+  const _UnpaidNote({required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.warning),
+        const SizedBox(width: Dimensions.spaceXS),
+        Expanded(
+          child: Text(
+            'غير مسدَّد للموردين حتى نهاية الشهر: ${formatMoneyWithUnit(amount)} (لا يدخل في الإجمالي)',
+            style: AppTextStyles.bodySmall(AppColors.warning),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -372,11 +467,14 @@ class _SummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.bodySmall(AppColors.textSecondary),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    style: AppTextStyles.bodySmall(AppColors.textSecondary),
+                  ),
                 ),
                 const SizedBox(height: 2),
                 FittedBox(
@@ -520,6 +618,125 @@ class _ExpenseCard extends StatelessWidget {
               ),
               const SizedBox(width: Dimensions.spaceXS),
               actions,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// دفعة مشتريات بوفيه: بلا أزرار تعديل ولا حذف. تُدار من صفحة المخزون
+/// والجرد (فواتير المشتريات).
+class _BuffetPaymentCard extends StatelessWidget {
+  final BuffetPayment payment;
+
+  /// true: يُترك عرض أزرار التعديل/الحذف فارغًا ليصطف المبلغ مع بطاقات المصاريف.
+  final bool alignWithActions;
+  const _BuffetPaymentCard({
+    required this.payment,
+    this.alignWithActions = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = payment;
+    final supplier = p.supplier?.trim() ?? '';
+    final invoiceNo = p.invoiceNo?.trim() ?? '';
+    final invoiceDay = formatDate(p.purchasedAt);
+    final paidDay = formatDate(p.paidAt);
+
+    final icon = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: _buffetColor.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(Dimensions.radiusM),
+      ),
+      child: const Icon(_buffetIcon, color: _buffetColor, size: 22),
+    );
+
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          supplier.isEmpty ? 'دفعة مشتريات' : 'دفعة مشتريات — $supplier',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.bodyLarge(),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const StatusBadge(
+              label: 'مشتريات البوفيه',
+              color: _buffetColor,
+              icon: _buffetIcon,
+            ),
+            if (invoiceNo.isNotEmpty)
+              Text('فاتورة رقم $invoiceNo',
+                  style: AppTextStyles.bodySmall(AppColors.textSecondary)),
+            Text('${arabicDayName(p.paidAt)}  $paidDay',
+                style: AppTextStyles.bodySmall(AppColors.textSecondary)),
+            if (invoiceDay != paidDay)
+              Text('تاريخ الفاتورة: $invoiceDay',
+                  style: AppTextStyles.bodySmall(AppColors.textMuted)),
+          ],
+        ),
+      ],
+    );
+
+    final amount = Text(
+      formatMoneyWithUnit(p.amount),
+      style: AppTextStyles.price(_buffetColor, 16),
+    );
+
+    // مكان أزرار التعديل/الحذف عند المصاريف: فراغ بنفس العرض ليصطف المبلغ.
+    const actionsGap = SizedBox(width: Dimensions.spaceXS + 80);
+
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: Dimensions.spaceM, vertical: 10),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          if (c.maxWidth < 520) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    icon,
+                    const SizedBox(width: Dimensions.spaceS),
+                    Expanded(child: info),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerStart,
+                  child: amount,
+                ),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              icon,
+              const SizedBox(width: Dimensions.spaceS),
+              Expanded(child: info),
+              const SizedBox(width: Dimensions.spaceS),
+              SizedBox(
+                width: 150,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: amount,
+                ),
+              ),
+              if (alignWithActions) actionsGap,
             ],
           );
         },

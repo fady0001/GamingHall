@@ -206,6 +206,7 @@ class InventoryRepositoryImpl implements InventoryRepository {
       final at = dbTime(input.purchasedAt);
       final touched = <int>{};
       final int invoiceId;
+      String? oldPurchasedAt;
 
       final header = {
         'purchased_at': at,
@@ -230,8 +231,12 @@ class InventoryRepositoryImpl implements InventoryRepository {
       } else {
         invoiceId = input.id!;
         final exists = await txn.query('purchase_invoices',
-            columns: ['id'], where: 'id = ?', whereArgs: [invoiceId], limit: 1);
+            columns: ['id', 'purchased_at'],
+            where: 'id = ?',
+            whereArgs: [invoiceId],
+            limit: 1);
         if (exists.isEmpty) throw StateError('الفاتورة غير موجودة');
+        oldPurchasedAt = exists.first['purchased_at'] as String?;
 
         final paid = await txn.rawQuery(
           'SELECT COALESCE(SUM(amount), 0) AS s FROM purchase_payments '
@@ -260,6 +265,17 @@ class InventoryRepositoryImpl implements InventoryRepository {
             where: 'invoice_id = ?', whereArgs: [invoiceId]);
         await txn.update('purchase_invoices', header,
             where: 'id = ?', whereArgs: [invoiceId]);
+        // الدفعة المسجَّلة وقت إنشاء الفاتورة تحمل تاريخها نفسه: عند تغيير تاريخ
+        // الفاتورة تنتقل معه، حتى لا تبقى محسوبة في الشهر القديم. الدفعات
+        // اللاحقة (بتواريخ أخرى) لا تُمَسّ.
+        if (oldPurchasedAt != null && oldPurchasedAt != at) {
+          await txn.update(
+            'purchase_payments',
+            {'paid_at': at},
+            where: 'invoice_id = ? AND paid_at = ?',
+            whereArgs: [invoiceId, oldPurchasedAt],
+          );
+        }
       }
 
       for (var i = 0; i < input.lines.length; i++) {

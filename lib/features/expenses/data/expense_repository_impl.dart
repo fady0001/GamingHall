@@ -8,6 +8,7 @@ import '../../../core/database/db_utils.dart';
 import '../../../core/domain/validation_exception.dart';
 import '../../../core/domain/value_objects/money.dart';
 import '../../../core/utils/time_format.dart';
+import '../domain/entities/buffet_payment.dart';
 import '../domain/entities/expense.dart';
 import '../domain/repositories/expense_repository.dart';
 
@@ -60,6 +61,55 @@ class ExpenseRepositoryImpl implements ExpenseRepository {
         orderBy: 'expense_date DESC, id DESC',
       );
       return rows.map(_toExpense).toList();
+    });
+  }
+
+  @override
+  Stream<List<BuffetPayment>> watchBuffetPayments(int year, int month) {
+    final prefix =
+        '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}';
+    return _db.watch(() async {
+      final rows = await _db.raw.rawQuery('''
+        SELECT p.id AS id, p.invoice_id AS invoice_id, p.amount AS amount,
+               p.paid_at AS paid_at, h.supplier AS supplier,
+               h.invoice_no AS invoice_no, h.purchased_at AS purchased_at
+        FROM purchase_payments p
+        JOIN purchase_invoices h ON h.id = p.invoice_id
+        WHERE substr(p.paid_at, 1, 7) = ?
+        ORDER BY p.paid_at DESC, p.id DESC
+      ''', [prefix]);
+      return [
+        for (final r in rows)
+          BuffetPayment(
+            id: r['id'] as int,
+            invoiceId: r['invoice_id'] as int,
+            amount: Money(_int(r['amount'])),
+            paidAt: parseDbTime(r['paid_at']),
+            supplier: r['supplier'] as String?,
+            invoiceNo: r['invoice_no'] as String?,
+            purchasedAt: parseDbTime(r['purchased_at']),
+          ),
+      ];
+    });
+  }
+
+  @override
+  Stream<Money> watchBuffetUnpaid(int year, int month) {
+    final to = dbTime(DateTime(year, month + 1, 1));
+    return _db.watch(() async {
+      final row = (await _db.raw.rawQuery('''
+        SELECT COALESCE(SUM(MAX(0, payable - paid)), 0) AS s
+        FROM (
+          SELECT
+            COALESCE((SELECT SUM(p.total_cost) FROM stock_purchases p
+                      WHERE p.invoice_id = h.id), 0) - h.discount AS payable,
+            COALESCE((SELECT SUM(x.amount) FROM purchase_payments x
+                      WHERE x.invoice_id = h.id AND x.paid_at < ?), 0) AS paid
+          FROM purchase_invoices h
+          WHERE h.purchased_at < ?
+        )
+      ''', [to, to])).first;
+      return Money(_int(row['s']));
     });
   }
 

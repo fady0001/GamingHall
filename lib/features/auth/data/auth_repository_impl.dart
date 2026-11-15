@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../core/database/app_database.dart';
@@ -13,6 +15,28 @@ class AuthRepositoryImpl implements AuthRepository {
   static const String _kFailedCount = 'auth_failed_count';
   static const String _kLockedUntil = 'auth_locked_until';
   static const int _freeAttempts = 5;
+
+  // ---- تسلسل عمليات المصادقة ----
+  //
+  // كل عملية تحقق (دخول / تغيير كلمة سر / استرداد) تُنفَّذ بعد انتهاء التي
+  // قبلها. بدون ذلك يمكن إطلاق عدة محاولات متوازية قبل أن يُسجَّل أي فشل،
+  // فيتجاوز المهاجم حدّ المحاولات المسموحة قبل القفل المؤقت.
+  Future<void> _authQueue = Future<void>.value();
+
+  Future<T> _exclusive<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    final previous = _authQueue;
+    // الذيل لا يفشل أبدًا، فلا يتعطل الطابور بسبب خطأ في عملية سابقة.
+    _authQueue = completer.future.then<void>((_) {}, onError: (_) {});
+    previous.then((_) async {
+      try {
+        completer.complete(await action());
+      } catch (e, s) {
+        completer.completeError(e, s);
+      }
+    });
+    return completer.future;
+  }
 
   Future<Map<String, Object?>?> _account(DatabaseExecutor ex) async {
     final rows = await ex.query('manager_account', limit: 1);
@@ -39,9 +63,14 @@ class AuthRepositoryImpl implements AuthRepository {
     if (passwordError != null) throw AuthException(passwordError);
 
     final recoveryCode = generateRecoveryCode();
-    final passwordHash = await PasswordHasher.hash(password);
-    final recoveryHash =
-        await PasswordHasher.hash(normalizeRecoveryCode(recoveryCode));
+    // التجزئتان مستقلتان فتُحسبان معًا في Isolate منفصل لكل منهما، بدل
+    // الانتظار لواحدة ثم الأخرى. لا يتغير أي شيء في قوة التجزئة.
+    final hashes = await Future.wait<String>([
+      PasswordHasher.hash(password),
+      PasswordHasher.hash(normalizeRecoveryCode(recoveryCode)),
+    ]);
+    final passwordHash = hashes[0];
+    final recoveryHash = hashes[1];
     final now = dbTime(DateTime.now());
 
     await _db.write((txn) async {
@@ -98,13 +127,27 @@ class AuthRepositoryImpl implements AuthRepository {
     );
   }
 
-  Future<void> _clearFailures() => _db.write((txn) async {
-        await SettingsStore.deleteValue(txn, _kFailedCount);
-        await SettingsStore.deleteValue(txn, _kLockedUntil);
-      });
+  /// يصفّر عدّاد المحاولات الفاشلة. لا يكتب شيئًا في القاعدة إن لم يكن هناك
+  /// ما يُصفَّر (الحالة المعتادة عند كل دخول ناجح)، فلا معاملة كتابة ولا إعادة
+  /// تحميل لكل الشاشات الحيّة بلا داعٍ.
+  Future<void> _clearFailures() async {
+    final failed = await SettingsStore.readValue(_db.raw, _kFailedCount);
+    final locked = await SettingsStore.readValue(_db.raw, _kLockedUntil);
+    if (failed == null && locked == null) return;
+    await _db.write((txn) async {
+      await SettingsStore.deleteValue(txn, _kFailedCount);
+      await SettingsStore.deleteValue(txn, _kLockedUntil);
+    });
+  }
 
   @override
   Future<LoginOutcome> login({
+    required String username,
+    required String password,
+  }) =>
+      _exclusive(() => _login(username: username, password: password));
+
+  Future<LoginOutcome> _login({
     required String username,
     required String password,
   }) async {
@@ -119,20 +162,53 @@ class AuthRepositoryImpl implements AuthRepository {
     final usernameOk = (account['username'] as String).toLowerCase() ==
         username.trim().toLowerCase();
     // نتحقق من كلمة السر دائمًا (حتى لو الاسم خاطئ) لتوحيد زمن الاستجابة.
-    final passwordOk = await PasswordHasher.verify(
-      password,
-      account['password_hash'] as String,
-    );
+    final storedHash = account['password_hash'] as String;
+    final check = await PasswordHasher.verifyAndCheck(password, storedHash);
 
-    if (usernameOk && passwordOk) {
+    if (usernameOk && check.valid) {
       await _clearFailures();
+      if (check.needsRehash) {
+        // ترقية صامتة لمرة واحدة: تجزئة قديمة أضعف → تجزئة بالمستوى الحالي.
+        // لا تؤخّر الدخول ولا تؤثر على نتيجته إن فشلت.
+        unawaited(_upgradePasswordHash(password, storedHash));
+      }
       return const LoginOutcome(success: true);
     }
     return _registerFailure();
   }
 
+  Future<void> _upgradePasswordHash(String password, String oldHash) async {
+    try {
+      final newHash = await PasswordHasher.hash(password);
+      if (!_db.isOpen) return;
+      await _db.write((txn) async {
+        // الشرط يضمن ألا نكتب فوق كلمة سر غُيّرت في هذه الأثناء.
+        await txn.update(
+          'manager_account',
+          {
+            'password_hash': newHash,
+            'updated_at': dbTime(DateTime.now()),
+          },
+          where: 'password_hash = ?',
+          whereArgs: [oldHash],
+        );
+      });
+    } catch (_) {
+      // الترقية تحسين اختياري؛ التجزئة القديمة تبقى صالحة وآمنة.
+    }
+  }
+
   @override
   Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) =>
+      _exclusive(() => _changePassword(
+            currentPassword: currentPassword,
+            newPassword: newPassword,
+          ));
+
+  Future<void> _changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
@@ -168,6 +244,15 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<String> resetWithRecoveryCode({
     required String recoveryCode,
     required String newPassword,
+  }) =>
+      _exclusive(() => _resetWithRecoveryCode(
+            recoveryCode: recoveryCode,
+            newPassword: newPassword,
+          ));
+
+  Future<String> _resetWithRecoveryCode({
+    required String recoveryCode,
+    required String newPassword,
   }) async {
     final lock = await _remainingLock(_db.raw);
     if (lock != null) {
@@ -189,13 +274,14 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     final newCode = generateRecoveryCode();
-    final newPasswordHash = await PasswordHasher.hash(newPassword);
-    final newRecoveryHash =
-        await PasswordHasher.hash(normalizeRecoveryCode(newCode));
+    final hashes = await Future.wait<String>([
+      PasswordHasher.hash(newPassword),
+      PasswordHasher.hash(normalizeRecoveryCode(newCode)),
+    ]);
     await _db.write((txn) async {
       await txn.update('manager_account', {
-        'password_hash': newPasswordHash,
-        'recovery_hash': newRecoveryHash,
+        'password_hash': hashes[0],
+        'recovery_hash': hashes[1],
         'updated_at': dbTime(DateTime.now()),
       });
     });
