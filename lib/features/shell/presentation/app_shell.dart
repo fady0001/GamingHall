@@ -12,6 +12,7 @@ import '../../auth/presentation/cubit/auth_cubit.dart';
 import '../../bookings/presentation/pages/bookings_page.dart';
 import '../../days/presentation/cubit/work_day_cubit.dart';
 import '../../days/presentation/new_day_flow.dart';
+import '../../expenses/presentation/pages/expenses_page.dart';
 import '../../home/presentation/pages/home_page.dart';
 import '../../inventory/presentation/pages/inventory_page.dart';
 import '../../invoices/presentation/pages/invoice_history_page.dart';
@@ -78,6 +79,8 @@ class AppShell extends StatelessWidget {
         return const BookingsPage();
       case Destination.inventory:
         return const InventoryPage();
+      case Destination.expenses:
+        return const ExpensesPage();
       case Destination.resources:
         return const ResourcesAdminPage();
       case Destination.menu:

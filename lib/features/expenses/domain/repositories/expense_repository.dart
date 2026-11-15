@@ -1,0 +1,23 @@
+import '../entities/expense.dart';
+
+/// مصاريف الصالة (للمدير فقط). الحذف "منطقي": يختفي المصروف من القوائم
+/// والتقارير ويبقى أثره في سجل التعديلات.
+abstract class ExpenseRepository {
+  /// مصاريف شهر معيّن ([month] من 1 إلى 12)، الأحدث أولًا.
+  Stream<List<Expense>> watchMonth(int year, int month);
+
+  /// سجل التعديلات (الأحدث أولًا).
+  Stream<List<ExpenseLogEntry>> watchLog({int limit = 300});
+
+  /// أسماء من سحبوا سابقًا (الأحدث أولًا) لاقتراحها عند تسجيل سحب جديد.
+  Stream<List<String>> watchWithdrawerNames();
+
+  /// يضيف مصروفًا ويعيد رقمه.
+  Future<int> add(ExpenseInput input);
+
+  /// يعدّل مصروفًا. إن لم يتغيّر شيء لا يُكتب شيء ولا يُسجَّل في السجل.
+  Future<void> update(int id, ExpenseInput input);
+
+  /// حذف منطقي.
+  Future<void> delete(int id);
+}

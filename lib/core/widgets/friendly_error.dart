@@ -1,5 +1,8 @@
+import '../domain/validation_exception.dart';
+
 /// يحوّل أي استثناء إلى رسالة عربية مفهومة للموظف (بدون "Bad state:" ونحوها).
 String friendlyError(Object e) {
+  if (e is ValidationException) return e.message;
   if (e is StateError) return e.message;
   if (e is ArgumentError) return e.message?.toString() ?? 'قيمة غير صالحة';
   final text = e.toString();

@@ -23,6 +23,7 @@ import 'features/auth/presentation/pages/role_gate_page.dart';
 import 'features/auth/presentation/pages/setup_page.dart';
 import 'features/bookings/presentation/cubit/bookings_cubit.dart';
 import 'features/days/presentation/cubit/work_day_cubit.dart';
+import 'features/expenses/presentation/cubit/expenses_cubit.dart';
 import 'features/invoices/presentation/cubit/invoices_cubit.dart';
 import 'features/inventory/presentation/cubit/inventory_cubit.dart';
 import 'features/menu/presentation/cubit/menu_cubit.dart';
@@ -148,6 +149,12 @@ class _Providers extends StatelessWidget {
           BlocProvider(
             create: (ctx) => InventoryCubit(
               services.inventory,
+              isManager: () => ctx.read<AuthCubit>().state.isManager,
+            ),
+          ),
+          BlocProvider(
+            create: (ctx) => ExpensesCubit(
+              services.expenses,
               isManager: () => ctx.read<AuthCubit>().state.isManager,
             ),
           ),

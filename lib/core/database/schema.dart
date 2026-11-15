@@ -4,7 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class AppSchema {
   AppSchema._();
 
-  static const int version = 7;
+  static const int version = 8;
 
   static const List<String> createStatements = [
     '''
@@ -149,6 +149,7 @@ class AppSchema {
     'CREATE INDEX IF NOT EXISTS idx_stock_purchases_invoice '
         'ON stock_purchases(invoice_id)',
     ..._performanceIndexes,
+    ..._expenseStatements,
   ];
 
   /// فهارس الأداء (الإصدار 7). أهمها `item_lines(menu_item_id)`: حساب كمية
@@ -161,6 +162,47 @@ class AppSchema {
         'ON stock_moves(purchase_id)',
     'CREATE INDEX IF NOT EXISTS idx_stock_moves_count '
         'ON stock_moves(count_id)',
+  ];
+
+  /// جداول المصاريف (الإصدار 8). تُستخدم عند الإنشاء وعند الترقية معًا، ولذلك
+  /// كلها `IF NOT EXISTS`.
+  ///
+  /// - `expenses`: مصاريف الصالة (صيانة، رواتب، مستلزمات، مسحوبات، احتياطي).
+  ///   الحذف منطقي (`is_deleted`) حتى يبقى المصروف في السجل. `withdrawer` اسم
+  ///   من سحب (للمسحوبات).
+  /// - `expense_log`: سجل التعديلات: من فعل ماذا ومتى، مع لقطة JSON للمصروف
+  ///   قبل وبعد.
+  static const List<String> _expenseStatements = [
+    '''
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      description TEXT NOT NULL DEFAULT '',
+      expense_date TEXT NOT NULL,
+      withdrawer TEXT,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)',
+    'CREATE INDEX IF NOT EXISTS idx_expenses_kind ON expenses(kind)',
+    '''
+    CREATE TABLE IF NOT EXISTS expense_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expense_id INTEGER NOT NULL REFERENCES expenses(id),
+      action TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      logged_at TEXT NOT NULL,
+      before_json TEXT,
+      after_json TEXT
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_expense_log_expense '
+        'ON expense_log(expense_id)',
+    'CREATE INDEX IF NOT EXISTS idx_expense_log_time '
+        'ON expense_log(logged_at)',
   ];
 
   /// جداول المخزون (الإصدار 5). تُستخدم عند الإنشاء وعند الترقية معًا، ولذلك
@@ -279,6 +321,15 @@ class AppSchema {
     if (oldVersion < 5) await _upgradeTo5(db);
     if (oldVersion < 6) await _upgradeTo6(db);
     if (oldVersion < 7) await _upgradeTo7(db);
+    if (oldVersion < 8) await _upgradeTo8(db);
+  }
+
+  /// الإصدار 8: جداول المصاريف وسجلها. جداول جديدة فقط، فلا تُمسّ أي بيانات
+  /// موجودة.
+  static Future<void> _upgradeTo8(Database db) async {
+    for (final statement in _expenseStatements) {
+      await db.execute(statement);
+    }
   }
 
   static Future<void> _upgradeTo7(Database db) async {
