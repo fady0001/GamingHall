@@ -143,7 +143,7 @@ class _Sidebar extends StatelessWidget {
           ),
           const SizedBox(height: Dimensions.spaceL),
           Expanded(
-            child: ListView(
+            child: _SidebarScroll(
               children: [
                 for (final d in main) _item(context, d),
                 if (admin.isNotEmpty) ...[
@@ -177,6 +177,48 @@ class _Sidebar extends StatelessWidget {
           },
         ),
       );
+}
+
+/// منطقة تمرير السايد بار.
+///
+/// شريط التمرير يُرسم فوق المحتوى وعلى حافة القائمة نفسها، فكان يتداخل مع
+/// مستطيلات الصفحات. لذلك نحجز له ممرًّا خاصًّا (padding في جهة النهاية —
+/// أي اليسار في الواجهة العربية) فيبقى فوق الفراغ لا فوق المستطيلات.
+class _SidebarScroll extends StatefulWidget {
+  final List<Widget> children;
+  const _SidebarScroll({required this.children});
+
+  @override
+  State<_SidebarScroll> createState() => _SidebarScrollState();
+}
+
+class _SidebarScrollState extends State<_SidebarScroll> {
+  /// عرض الممر المحجوز لشريط التمرير (الشريط نفسه ~8 وعند المرور بالماوس ~12).
+  static const double _gutter = 14;
+
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScrollConfiguration(
+      // نعطّل الشريط التلقائي حتى لا يظهر شريطان.
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: Scrollbar(
+        controller: _controller,
+        child: ListView(
+          controller: _controller,
+          padding: const EdgeInsetsDirectional.only(end: _gutter),
+          children: widget.children,
+        ),
+      ),
+    );
+  }
 }
 
 class _NavItem extends StatefulWidget {

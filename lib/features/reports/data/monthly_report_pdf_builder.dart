@@ -68,7 +68,7 @@ class MonthlyReportPdfBuilder {
 
   /// مبلغ مع الوحدة. الرقم داخل عزل LTR حتى تبقى إشارة السالب قبل الرقم.
   static String _m(int v) =>
-      '⁦${groupThousands(v)}⁩ ${AppInfo.currencyLabel}';
+      '\u2066${groupThousands(v)}\u2069 ${AppInfo.currencyLabel}';
 
   /// فرق بإشارة (+3 / -2) داخل عزل LTR حتى لا تنقلب الإشارة.
   static String _signed(int v) => '\u2066${v > 0 ? '+$v' : '$v'}\u2069';

@@ -15,7 +15,6 @@ import '../../../../core/widgets/live_builder.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/snackbars.dart';
 import '../../../../core/widgets/status_badge.dart';
-import '../../../printing/data/invoice_pdf_builder.dart';
 import '../../../printing/data/invoice_printer.dart';
 import '../../../settings/domain/entities/app_settings.dart';
 import '../../../settings/presentation/cubit/settings_cubit.dart';
@@ -133,48 +132,38 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
     }
   }
 
-  Future<void> _preview(Invoice invoice, AppSettings settings) {
-    return showDialog<void>(
+  /// طباعة على طابعة أخرى يختارها الموظف (مؤقتًا لهذه الفاتورة فقط).
+  Future<void> _printOther(Invoice invoice, AppSettings settings) async {
+    final printer = await showDialog<Printer>(
       context: context,
-      builder: (ctx) => Dialog(
-        child: SizedBox(
-          width: 460,
-          height: 700,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'معاينة الفاتورة',
-                        style: AppTextStyles.heading3(),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: PdfPreview(
-                  build: (format) =>
-                      InvoicePdfBuilder.build(invoice, settings, format),
-                  initialPageFormat: InvoicePrinter.format,
-                  canChangePageFormat: false,
-                  canChangeOrientation: false,
-                  canDebug: false,
-                  pdfFileName: 'invoice-${invoice.id}.pdf',
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (_) => _PrinterPickerDialog(configuredName: settings.printerName),
     );
+    if (printer == null || !mounted) return;
+
+    setState(() => _busy = true);
+    final error = await InvoicePrinter.printTo(invoice, settings, printer);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      showAppSnack(context, 'أُرسلت الفاتورة إلى الطابعة: ${printer.name}');
+    } else {
+      showAppSnack(context, error, error: true);
+    }
+  }
+
+  /// نافذة "خيارات أخرى": طباعة على طابعة أخرى أو حفظ كملف PDF.
+  Future<void> _openMoreOptions(Invoice invoice, AppSettings settings) async {
+    final action = await showDialog<_MoreAction>(
+      context: context,
+      builder: (_) => const _MoreOptionsDialog(),
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case _MoreAction.printOther:
+        await _printOther(invoice, settings);
+      case _MoreAction.savePdf:
+        await _savePdf(invoice, settings);
+    }
   }
 
   Widget _body(BuildContext context, Invoice invoice, AppSettings settings) {
@@ -200,8 +189,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
                     settings: settings,
                     busy: _busy,
                     onPrint: () => _print(invoice, settings),
-                    onSave: () => _savePdf(invoice, settings),
-                    onPreview: () => _preview(invoice, settings),
+                    onMore: () => _openMoreOptions(invoice, settings),
                   ),
                 ),
         );
@@ -238,8 +226,7 @@ class _InvoiceDetailPageState extends State<InvoiceDetailPage> {
             settings: settings,
             busy: _busy,
             onPrint: () => _print(invoice, settings),
-            onSave: () => _savePdf(invoice, settings),
-            onPreview: () => _preview(invoice, settings),
+            onMore: () => _openMoreOptions(invoice, settings),
           ),
         ],
       );
@@ -654,16 +641,14 @@ class _ClosedSidePanel extends StatelessWidget {
   final AppSettings settings;
   final bool busy;
   final VoidCallback onPrint;
-  final VoidCallback onSave;
-  final VoidCallback onPreview;
+  final VoidCallback onMore;
 
   const _ClosedSidePanel({
     required this.invoice,
     required this.settings,
     required this.busy,
     required this.onPrint,
-    required this.onSave,
-    required this.onPreview,
+    required this.onMore,
   });
 
   @override
@@ -689,21 +674,21 @@ class _ClosedSidePanel extends StatelessWidget {
           height: Dimensions.buttonHeightLarge,
           child: FilledButton.icon(
             onPressed: busy ? null : onPrint,
-            icon: const Icon(Icons.print_rounded),
+            icon: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : const Icon(Icons.print_rounded),
             label: const Text('طباعة الفاتورة'),
           ),
         ),
         const SizedBox(height: Dimensions.spaceS),
         OutlinedButton.icon(
-          onPressed: onPreview,
-          icon: const Icon(Icons.visibility_rounded),
-          label: const Text('معاينة (واختيار طابعة)'),
-        ),
-        const SizedBox(height: Dimensions.spaceS),
-        OutlinedButton.icon(
-          onPressed: onSave,
-          icon: const Icon(Icons.picture_as_pdf_rounded),
-          label: const Text('حفظ كملف PDF'),
+          onPressed: busy ? null : onMore,
+          icon: const Icon(Icons.more_horiz_rounded),
+          label: const Text('خيارات أخرى'),
         ),
         const SizedBox(height: Dimensions.spaceL),
         Text(
@@ -712,6 +697,215 @@ class _ClosedSidePanel extends StatelessWidget {
           style: AppTextStyles.bodySmall(AppColors.textMuted),
         ),
       ],
+    );
+  }
+}
+
+enum _MoreAction { printOther, savePdf }
+
+/// نافذة "خيارات أخرى": خياران كبيران وواضحان.
+class _MoreOptionsDialog extends StatelessWidget {
+  const _MoreOptionsDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDialog(
+      title: 'خيارات أخرى',
+      icon: Icons.more_horiz_rounded,
+      width: 420,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إغلاق'),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _OptionButton(
+            icon: Icons.print_outlined,
+            title: 'طباعة على طابعة أخرى',
+            subtitle: 'اختر طابعة غير المضبوطة (مثلًا إذا تعطلت الأساسية)',
+            onTap: () => Navigator.of(context).pop(_MoreAction.printOther),
+          ),
+          const SizedBox(height: Dimensions.spaceS),
+          _OptionButton(
+            icon: Icons.picture_as_pdf_rounded,
+            title: 'حفظ كملف PDF',
+            subtitle: 'يُحفظ الملف على هذا الجهاز',
+            onTap: () => Navigator.of(context).pop(_MoreAction.savePdf),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OptionButton extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _OptionButton({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(Dimensions.buttonHeightLarge + 12),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Dimensions.spaceM,
+          vertical: Dimensions.spaceS,
+        ),
+        alignment: AlignmentDirectional.centerStart,
+      ),
+      onPressed: onTap,
+      child: Row(
+        children: [
+          Icon(icon, size: 28),
+          const SizedBox(width: Dimensions.spaceM),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTextStyles.heading3()),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.bodySmall(AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// نافذة اختيار الطابعة: تعرض طابعات الجهاز الآن، والنقر على واحدة يطبع عليها
+/// فورًا. لا تغيّر أي إعداد محفوظ.
+class _PrinterPickerDialog extends StatefulWidget {
+  final String configuredName;
+  const _PrinterPickerDialog({required this.configuredName});
+
+  @override
+  State<_PrinterPickerDialog> createState() => _PrinterPickerDialogState();
+}
+
+class _PrinterPickerDialogState extends State<_PrinterPickerDialog> {
+  late Future<List<Printer>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = InvoicePrinter.listPrinters();
+  }
+
+  void _reload() {
+    final next = InvoicePrinter.listPrinters();
+    setState(() {
+      _future = next;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = widget.configuredName.trim();
+    return AppDialog(
+      title: 'اختر الطابعة',
+      icon: Icons.print_outlined,
+      width: 460,
+      actions: [
+        TextButton.icon(
+          onPressed: _reload,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('تحديث القائمة'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء'),
+        ),
+      ],
+      child: FutureBuilder<List<Printer>>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(Dimensions.spaceL),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final printers = snapshot.data ?? const <Printer>[];
+          if (printers.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: Dimensions.spaceM),
+              child: Text(
+                'لا توجد أي طابعة مثبّتة على هذا الجهاز.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyLarge(AppColors.textSecondary),
+              ),
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final printer in printers)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Dimensions.spaceS),
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize:
+                          const Size.fromHeight(Dimensions.buttonHeightLarge),
+                      alignment: AlignmentDirectional.centerStart,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(printer),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.print_rounded),
+                        const SizedBox(width: Dimensions.spaceM),
+                        Expanded(
+                          child: Text(
+                            printer.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.bodyLarge(),
+                          ),
+                        ),
+                        if (printer.name == configured)
+                          const _PrinterTag(label: 'المضبوطة')
+                        else if (configured.isEmpty && printer.isDefault)
+                          const _PrinterTag(label: 'الافتراضية'),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PrinterTag extends StatelessWidget {
+  final String label;
+  const _PrinterTag({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: Dimensions.spaceS),
+      child: StatusBadge(label: label, color: AppColors.secondary),
     );
   }
 }

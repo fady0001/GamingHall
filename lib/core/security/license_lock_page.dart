@@ -37,7 +37,7 @@ class _LicenseLockPageState extends State<LicenseLockPage> {
     switch (widget.result.status) {
       case LicenseStatus.missingLicenseFile:
         return 'هذا الجهاز لم يُفعَّل بعد. أرسل "كود الجهاز" إلى الدعم الفني '
-            'للحصول على ملف التفعيل، ثم اخترْه من الزر أدناه.';
+            'للحصول على ملف التفعيل، ثم قم باختياره من الزر أدناه.';
       case LicenseStatus.fingerprintMismatch:
         return 'ملف التفعيل الموجود خاص بجهاز آخر. أرسل "كود الجهاز" إلى الدعم '
             'الفني للحصول على ملف جديد لهذا الجهاز.';

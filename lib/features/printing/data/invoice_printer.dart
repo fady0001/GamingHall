@@ -44,15 +44,46 @@ class InvoicePrinter {
         }
       }
 
-      final ok = await Printing.directPrintPdf(
-        printer: chosen,
-        onLayout: (f) => InvoicePdfBuilder.build(invoice, settings, f),
-        format: format,
-        name: 'invoice-${invoice.id}',
-      );
-      return ok ? null : 'تعذّر إرسال الفاتورة إلى الطابعة.';
+      return await _send(invoice, settings, chosen);
     } catch (e) {
       return 'تعذّرت الطباعة: $e';
+    }
+  }
+
+  /// يطبع مباشرة على طابعة محددة يختارها الموظف (بدل الطابعة المضبوطة)،
+  /// دون تغيير أي إعداد محفوظ. يعيد null عند النجاح أو رسالة خطأ للعرض.
+  static Future<String?> printTo(
+    Invoice invoice,
+    AppSettings settings,
+    Printer printer,
+  ) async {
+    try {
+      return await _send(invoice, settings, printer);
+    } catch (e) {
+      return 'تعذّرت الطباعة: $e';
+    }
+  }
+
+  static Future<String?> _send(
+    Invoice invoice,
+    AppSettings settings,
+    Printer printer,
+  ) async {
+    final ok = await Printing.directPrintPdf(
+      printer: printer,
+      onLayout: (f) => InvoicePdfBuilder.build(invoice, settings, f),
+      format: format,
+      name: 'invoice-${invoice.id}',
+    );
+    return ok ? null : 'تعذّر إرسال الفاتورة إلى الطابعة \"${printer.name}\".';
+  }
+
+  /// الطابعات المتاحة حاليًا على الجهاز (قائمة فارغة عند الفشل).
+  static Future<List<Printer>> listPrinters() async {
+    try {
+      return await Printing.listPrinters();
+    } catch (_) {
+      return const [];
     }
   }
 
