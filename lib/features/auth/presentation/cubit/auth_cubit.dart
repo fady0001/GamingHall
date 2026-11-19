@@ -119,6 +119,24 @@ class AuthCubit extends Cubit<AuthState> {
         newPassword: newPassword,
       );
 
+  /// يستبدل رمز الاسترداد (يتطلب كلمة السر الحالية) ويعيد الرمز الجديد.
+  Future<String> regenerateRecoveryCode({required String currentPassword}) =>
+      _repository.regenerateRecoveryCode(currentPassword: currentPassword);
+
+  /// رمز الطلب الذي يرسله المدير للدعم الفني عند فقد كلمة السر ورمز الاسترداد.
+  Future<String> createResetRequest({bool forceNew = false}) =>
+      _repository.createResetRequest(forceNew: forceNew);
+
+  /// الاسترداد برمز التفويض الصادر من الدعم الفني (يعيد رمز استرداد جديدًا).
+  Future<String> resetWithAuthorization({
+    required String authorizationCode,
+    required String newPassword,
+  }) =>
+      _repository.resetWithAuthorization(
+        authorizationCode: authorizationCode,
+        newPassword: newPassword,
+      );
+
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,

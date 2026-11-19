@@ -47,8 +47,9 @@ class _RecoveryCodeDialogState extends State<_RecoveryCodeDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'إذا نسيت كلمة سر المدير فهذا الرمز هو الطريقة الوحيدة لاستردادها. '
-              'اكتبه على ورقة واحفظه في مكان آمن بعيدًا عن الموظفين. '
+              'إذا نسيت كلمة سر المدير فهذا الرمز هو أسرع طريقة لاستردادها. '
+              'اكتبه على ورقة أو احفظه على فلاشة (USB) في مكان آمن بعيدًا عن '
+              'الموظفين، ولا تتركه محفوظًا على هذا الكمبيوتر. '
               'لن يظهر مرة أخرى.',
               style: AppTextStyles.bodyLarge(AppColors.textSecondary),
             ),

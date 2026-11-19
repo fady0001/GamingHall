@@ -8,6 +8,7 @@ import '../../../../core/widgets/app_dialog.dart';
 import '../../../../core/widgets/friendly_error.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../cubit/auth_cubit.dart';
+import 'lost_recovery_code_dialog.dart';
 import 'recovery_code_dialog.dart';
 
 /// تسجيل دخول المدير. يُغلق بـ true عند النجاح.
@@ -86,20 +87,24 @@ class _ManagerLoginDialogState extends State<_ManagerLoginDialog> {
     }
   }
 
-  Future<void> _forgot() async {
+  /// يفتح نافذة استرداد (برمز الاسترداد أو بتفويض الدعم الفني)، وعند نجاحها
+  /// يعرض رمز الاسترداد الجديد الذي لا يظهر إلا مرة واحدة.
+  Future<void> _runRecoveryFlow(Widget dialog) async {
     final auth = context.read<AuthCubit>();
     final newCode = await showDialog<String>(
       context: context,
-      builder: (_) => BlocProvider.value(value: auth, child: const _RecoveryDialog()),
+      builder: (_) => BlocProvider.value(value: auth, child: dialog),
     );
     if (newCode != null && mounted) {
       await showRecoveryCodeDialog(context, newCode);
-      if (mounted) {
-        setState(() => _error = null);
-        ScaffoldMessenger.maybeOf(context);
-      }
+      if (mounted) setState(() => _error = null);
     }
   }
+
+  Future<void> _forgot() => _runRecoveryFlow(const _RecoveryDialog());
+
+  Future<void> _lostRecoveryCode() =>
+      _runRecoveryFlow(const LostRecoveryCodeDialog());
 
   @override
   Widget build(BuildContext context) {
@@ -162,12 +167,18 @@ class _ManagerLoginDialogState extends State<_ManagerLoginDialog> {
             Text(_error!, style: AppTextStyles.bodyMedium(AppColors.danger)),
           ],
           const SizedBox(height: Dimensions.spaceXS),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton(
-              onPressed: _busy ? null : _forgot,
-              child: const Text('نسيت كلمة السر؟'),
-            ),
+          Wrap(
+            spacing: Dimensions.spaceXS,
+            children: [
+              TextButton(
+                onPressed: _busy ? null : _forgot,
+                child: const Text('نسيت كلمة السر؟'),
+              ),
+              TextButton(
+                onPressed: _busy ? null : _lostRecoveryCode,
+                child: const Text('فقدت رمز الاسترداد؟'),
+              ),
+            ],
           ),
         ],
       ),

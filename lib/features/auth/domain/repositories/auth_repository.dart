@@ -48,6 +48,24 @@ abstract class AuthRepository {
     required String newPassword,
   });
 
+  /// يستبدل رمز الاسترداد برمز جديد (يُعرض مرة واحدة) بعد التحقق من كلمة السر
+  /// الحالية. الرمز القديم يبطل فورًا. للمدير المسجَّل دخوله إن ضاع الرمز أو
+  /// شكّ أنه انكشف.
+  Future<String> regenerateRecoveryCode({required String currentPassword});
+
+  /// المدير فقد كلمة السر ورمز الاسترداد معًا: يولّد "رمز طلب" (كود الجهاز +
+  /// رقم عشوائي + الوقت) يرسله للدعم الفني ليصدروا "رمز تفويض" موقَّعًا.
+  /// إن وُجد طلب معلّق صالح يُعاد نفسه (إلا مع [forceNew]) حتى لا يبطل رمز
+  /// التفويض الذي قد يكون في الطريق.
+  Future<String> createResetRequest({bool forceNew = false});
+
+  /// يتحقق من رمز التفويض الصادر من الدعم الفني للطلب المعلّق، ثم يعيّن كلمة
+  /// سر جديدة ويعيد رمز استرداد جديدًا. الرمز لمرة واحدة ولهذا الجهاز فقط.
+  Future<String> resetWithAuthorization({
+    required String authorizationCode,
+    required String newPassword,
+  });
+
   Future<String?> managerUsername();
 }
 

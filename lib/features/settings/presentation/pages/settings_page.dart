@@ -18,12 +18,14 @@ import '../../../../core/widgets/page_header.dart';
 import '../../../../core/widgets/section_title.dart';
 import '../../../../core/widgets/snackbars.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../auth/presentation/widgets/recovery_code_dialog.dart';
 import '../../../printing/data/invoice_printer.dart';
 import '../../domain/entities/app_settings.dart';
 import '../cubit/settings_cubit.dart';
 import '../widgets/backup_section.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/demo_data_section.dart';
+import '../widgets/regenerate_recovery_code_dialog.dart';
 
 /// الإعدادات (للمدير فقط).
 class SettingsPage extends StatefulWidget {
@@ -128,6 +130,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _changePassword() async {
     final ok = await showChangePasswordDialog(context);
     if (ok && mounted) showAppSnack(context, 'تم تغيير كلمة السر');
+  }
+
+  Future<void> _regenerateRecoveryCode() async {
+    final code = await showRegenerateRecoveryCodeDialog(context);
+    if (code == null || !mounted) return;
+    await showRecoveryCodeDialog(context, code);
   }
 
   @override
@@ -314,13 +322,21 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                       const SizedBox(height: Dimensions.spaceM),
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: OutlinedButton.icon(
-                          onPressed: _changePassword,
-                          icon: const Icon(Icons.lock_reset_rounded),
-                          label: const Text('تغيير كلمة السر'),
-                        ),
+                      Wrap(
+                        spacing: Dimensions.spaceS,
+                        runSpacing: Dimensions.spaceS,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _changePassword,
+                            icon: const Icon(Icons.lock_reset_rounded),
+                            label: const Text('تغيير كلمة السر'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _regenerateRecoveryCode,
+                            icon: const Icon(Icons.key_rounded),
+                            label: const Text('إنشاء رمز استرداد جديد'),
+                          ),
+                        ],
                       ),
                     ]),
                     _card('النسخ الاحتياطي', Icons.backup_rounded, const [BackupSection()]),
